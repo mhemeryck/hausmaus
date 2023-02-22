@@ -1,0 +1,3 @@
+# hausmaus
+
+Home automation stuff.
