@@ -1,3 +1,6 @@
+use hausmaus::watch;
+
 fn main() {
-    println!("Hello, world!");
+    let path = "/home/mhemeryck/Projects/unipinotifiy/fixtures";
+    watch(path).unwrap();
 }
