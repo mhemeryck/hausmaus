@@ -8,6 +8,44 @@ use std::vec;
 
 const FILENAME: &str = "ro_value";
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempdir;
+
+    #[test]
+    fn test_crawl_simple_file_no_match() {
+        let tmp_dir =
+            tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
+        let path = tmp_dir.path().join("myfile.txt");
+        let mut tmp_file = fs::File::create(&path).expect("Could not open a new temp file");
+        writeln!(tmp_file, "Hello").expect("Could not write contents to temp file");
+
+        let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
+
+        crawl(tmp_dir.path(), &mut paths, "foo").expect("Expect crawl to work");
+
+        assert_eq!(paths.len(), 0);
+    }
+
+    #[test]
+    fn test_crawl_file_match() {
+        let tmp_dir =
+            tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
+        let path = tmp_dir.path().join("myfile.txt");
+        let mut tmp_file = fs::File::create(&path).expect("Could not open a new temp file");
+        writeln!(tmp_file, "Hello").expect("Could not write contents to temp file");
+
+        let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
+
+        crawl(tmp_dir.path(), &mut paths, "myfile.txt").expect("Expect crawl to work");
+
+        assert_eq!(paths.len(), 1);
+        assert_eq!(paths[0], path);
+    }
+}
+
 /// Crawls a directory structure for filenames matching given input
 fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) -> io::Result<()> {
     if dir.is_dir() {
