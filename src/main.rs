@@ -1,7 +1,7 @@
-use hausmaus::watch;
+use hausmaus;
 
 const PATH: &str = "/home/mhemeryck/Projects/unipinotifiy/fixtures";
 
 fn main() {
-    watch(PATH).unwrap();
+    hausmaus::main(PATH);
 }

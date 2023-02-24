@@ -79,26 +79,49 @@ fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) 
     Ok(())
 }
 
-/// watch watches a folder for changes and prints them (for now)
-pub fn watch(path_str: &str) -> notify::Result<()> {
+/// setup_watcher configures the file watcher to search for specific paths
+fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) {
     // Paths
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
     crawl(&path::Path::new(&path_str), &mut paths, FILENAME).unwrap();
 
-    // ASync channels
-    let (tx, rx) = sync::mpsc::channel();
+    for path in paths.iter() {
+        println!("Path {:?}", path.canonicalize().unwrap());
+        watcher
+            .watch(path.as_ref(), notify::RecursiveMode::NonRecursive)
+            .unwrap();
+    }
+}
+
+/// handle_messages receives any file events and sends them out over MQTT
+fn handle_messages(
+    rx: &sync::mpsc::Receiver<Result<notify::Event, notify::Error>>,
+    mqtt_client: &mqtt::Client,
+) {
+    for res in rx {
+        if let Ok(event) = res {
+            for path in event.paths {
+                let message =
+                    mqtt::Message::new(MQTT_TOPIC, path.to_str().unwrap().as_bytes(), MQTT_QOS);
+                mqtt_client.publish(message).unwrap();
+            }
+            //println!("changed: {:?}", event);
+            //println!("event kind: {:?}", event.kind);
+        }
+    }
+}
+pub fn main(path_str: &str) {
+    let (tx, rx): (
+        sync::mpsc::Sender<Result<notify::Event, notify::Error>>,
+        sync::mpsc::Receiver<Result<notify::Event, notify::Error>>,
+    ) = sync::mpsc::channel();
 
     // PollWatcher setup
     let config = notify::Config::default()
         .with_poll_interval(time::Duration::from_millis(POLL_INTERVAL))
         .with_compare_contents(true);
-
-    let mut watcher = notify::PollWatcher::new(tx, config)?;
-
-    for path in paths.iter() {
-        println!("Path {:?}", path.canonicalize().unwrap());
-        watcher.watch(path.as_ref(), notify::RecursiveMode::NonRecursive)?;
-    }
+    let mut watcher = notify::PollWatcher::new(tx, config).unwrap();
+    setup_watcher(&path_str, &mut watcher);
 
     // MQTT setup
     let create_opts = mqtt::CreateOptionsBuilder::new()
@@ -115,18 +138,5 @@ pub fn watch(path_str: &str) -> notify::Result<()> {
 
     mqtt_client.connect(conn_opts).unwrap();
 
-    // let message = mqtt::Message::new(MQTT_TOPIC, MQTT_PAYLOAD.clone(), MQTT_QOS);
-
-    for res in rx {
-        if let Ok(event) = res {
-            for path in event.paths {
-                let message =
-                    mqtt::Message::new(MQTT_TOPIC, path.to_str().unwrap().as_bytes(), MQTT_QOS);
-                mqtt_client.publish(message).unwrap();
-            }
-            //println!("changed: {:?}", event);
-            //println!("event kind: {:?}", event.kind);
-        }
-    }
-    Ok(())
+    handle_messages(&rx, &mqtt_client);
 }
