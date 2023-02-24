@@ -80,17 +80,17 @@ fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) 
 }
 
 /// setup_watcher configures the file watcher to search for specific paths
-fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) {
+fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) -> Result<(), notify::Error> {
     // Paths
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
-    crawl(&path::Path::new(&path_str), &mut paths, FILENAME).unwrap();
+    crawl(&path::Path::new(&path_str), &mut paths, FILENAME)?;
 
     for path in paths.iter() {
         println!("Path {:?}", path.canonicalize().unwrap());
-        watcher
-            .watch(path.as_ref(), notify::RecursiveMode::NonRecursive)
-            .unwrap();
+        watcher.watch(path.as_ref(), notify::RecursiveMode::NonRecursive)?;
     }
+
+    Ok(())
 }
 
 /// handle_messages receives any file events and sends them out over MQTT
@@ -121,7 +121,8 @@ pub fn main(path_str: &str) {
         .with_poll_interval(time::Duration::from_millis(POLL_INTERVAL))
         .with_compare_contents(true);
     let mut watcher = notify::PollWatcher::new(tx, config).unwrap();
-    setup_watcher(&path_str, &mut watcher);
+
+    setup_watcher(&path_str, &mut watcher).expect("Could not set up watcher");
 
     // MQTT setup
     let create_opts = mqtt::CreateOptionsBuilder::new()
