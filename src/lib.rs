@@ -1,4 +1,5 @@
 use notify::{self, Watcher};
+use paho_mqtt as mqtt;
 use std::fs;
 use std::io;
 use std::path;
@@ -8,6 +9,14 @@ use std::vec;
 
 const FILENAME: &str = "ro_value";
 const POLL_INTERVAL: u64 = 250;
+
+const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
+const MQTT_CLIENT_ID: &str = "hausmaus";
+const MQTT_KEEP_ALIVE: u64 = 20;
+
+const MQTT_TOPIC: &str = "foo";
+// const MQTT_PAYLOAD: &[u8; 6] = b"Hello!";
+const MQTT_QOS: i32 = 2;
 
 #[cfg(test)]
 mod tests {
@@ -76,8 +85,10 @@ pub fn watch(path_str: &str) -> notify::Result<()> {
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
     crawl(&path::Path::new(&path_str), &mut paths, FILENAME).unwrap();
 
+    // ASync channels
     let (tx, rx) = sync::mpsc::channel();
 
+    // PollWatcher setup
     let config = notify::Config::default()
         .with_poll_interval(time::Duration::from_millis(POLL_INTERVAL))
         .with_compare_contents(true);
@@ -89,10 +100,32 @@ pub fn watch(path_str: &str) -> notify::Result<()> {
         watcher.watch(path.as_ref(), notify::RecursiveMode::NonRecursive)?;
     }
 
+    // MQTT setup
+    let create_opts = mqtt::CreateOptionsBuilder::new()
+        .server_uri(MQTT_HOST)
+        .client_id(MQTT_CLIENT_ID.to_string())
+        .finalize();
+
+    let mqtt_client = mqtt::Client::new(create_opts).unwrap();
+
+    let conn_opts = mqtt::ConnectOptionsBuilder::new()
+        .keep_alive_interval(time::Duration::from_secs(MQTT_KEEP_ALIVE))
+        .clean_session(true)
+        .finalize();
+
+    mqtt_client.connect(conn_opts).unwrap();
+
+    // let message = mqtt::Message::new(MQTT_TOPIC, MQTT_PAYLOAD.clone(), MQTT_QOS);
+
     for res in rx {
         if let Ok(event) = res {
-            println!("changed: {:?}", event);
-            println!("event kind: {:?}", event.kind);
+            for path in event.paths {
+                let message =
+                    mqtt::Message::new(MQTT_TOPIC, path.to_str().unwrap().as_bytes(), MQTT_QOS);
+                mqtt_client.publish(message).unwrap();
+            }
+            //println!("changed: {:?}", event);
+            //println!("event kind: {:?}", event.kind);
         }
     }
     Ok(())
