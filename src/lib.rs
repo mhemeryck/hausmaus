@@ -72,6 +72,7 @@ fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) 
 
 /// watch watches a folder for changes and prints them (for now)
 pub fn watch(path_str: &str) -> notify::Result<()> {
+    // Paths
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
     crawl(&path::Path::new(&path_str), &mut paths, FILENAME).unwrap();
 
@@ -89,12 +90,9 @@ pub fn watch(path_str: &str) -> notify::Result<()> {
     }
 
     for res in rx {
-        match res {
-            Ok(event) => {
-                println!("changed: {:?}", event);
-                println!("event kind: {:?}", event.kind);
-            }
-            Err(e) => println!("watch error: {:?}", e),
+        if let Ok(event) = res {
+            println!("changed: {:?}", event);
+            println!("event kind: {:?}", event.kind);
         }
     }
     Ok(())
