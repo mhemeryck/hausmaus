@@ -1,6 +1,7 @@
 use hausmaus::watch;
 
+const PATH: &str = "/home/mhemeryck/Projects/unipinotifiy/fixtures";
+
 fn main() {
-    let path = "/home/mhemeryck/Projects/unipinotifiy/fixtures";
-    watch(path).unwrap();
+    watch(PATH).unwrap();
 }

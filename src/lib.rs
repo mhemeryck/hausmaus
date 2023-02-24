@@ -7,6 +7,7 @@ use std::time;
 use std::vec;
 
 const FILENAME: &str = "ro_value";
+const POLL_INTERVAL: u64 = 250;
 
 #[cfg(test)]
 mod tests {
@@ -71,18 +72,16 @@ fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) 
 
 /// watch watches a folder for changes and prints them (for now)
 pub fn watch(path_str: &str) -> notify::Result<()> {
-    let path = path::Path::new(&path_str);
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
-    crawl(&path, &mut paths, FILENAME).unwrap();
+    crawl(&path::Path::new(&path_str), &mut paths, FILENAME).unwrap();
 
     let (tx, rx) = sync::mpsc::channel();
 
     let config = notify::Config::default()
-        .with_poll_interval(time::Duration::from_millis(250))
+        .with_poll_interval(time::Duration::from_millis(POLL_INTERVAL))
         .with_compare_contents(true);
 
     let mut watcher = notify::PollWatcher::new(tx, config)?;
-    // watcher.watch(path_str.as_ref(), notify::RecursiveMode::Recursive)?;
 
     for path in paths.iter() {
         println!("Path {:?}", path.canonicalize().unwrap());
