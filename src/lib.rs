@@ -22,6 +22,7 @@ const MQTT_QOS: i32 = 2;
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::thread;
     use tempdir;
 
     #[test]
@@ -53,6 +54,51 @@ mod tests {
 
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0], path);
+    }
+
+    #[test]
+    fn test_match_event() {
+        let tmp_dir =
+            tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
+        let path = tmp_dir.path().join(FILENAME);
+        let mut tmp_file = fs::File::create(&path).expect("Could not open a new temp file");
+        write!(tmp_file, "Hello").expect("Could not write contents to temp file");
+
+        let (tx, rx) = sync::mpsc::channel();
+
+        // PollWatcher setup
+        let config = notify::Config::default()
+            .with_poll_interval(time::Duration::from_millis(POLL_INTERVAL))
+            .with_compare_contents(true);
+        let mut watcher = notify::PollWatcher::new(tx, config).unwrap();
+
+        setup_watcher(
+            &tmp_dir
+                .path()
+                .to_str()
+                .expect("Could not convert temp folder path to string"),
+            &mut watcher,
+        )
+        .expect("Could not set up watcher");
+
+        // Writer thread: puts message on the sender
+        let handle = thread::spawn(move || {
+            write!(tmp_file, " world").expect("Could not write contents to temp file");
+        });
+
+        handle.join().expect("Writer did not complete!");
+        let contents = fs::read_to_string(path).expect("Could not open temp file for reading");
+        assert_eq!(contents, "Hello world");
+
+        // Blocking wait to retrieve event
+        let retrieved = rx.recv().expect("Error retrieving event");
+        let event = retrieved.expect("Could not unwrap event");
+        for path in event.paths {
+            let contents =
+                fs::read_to_string(path.to_str().expect("Could not convert path to string"))
+                    .expect("Could not open temp file for reading");
+            assert_eq!(contents, "Hello world");
+        }
     }
 }
 
