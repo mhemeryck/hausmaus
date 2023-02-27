@@ -86,7 +86,7 @@ fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) -> Result<()
     crawl(&path::Path::new(&path_str), &mut paths, FILENAME)?;
 
     for path in paths.iter() {
-        println!("Path {:?}", path.canonicalize().unwrap());
+        // println!("Path {:?}", path.canonicalize().unwrap());
         watcher.watch(path.as_ref(), notify::RecursiveMode::NonRecursive)?;
     }
 
@@ -97,18 +97,20 @@ fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) -> Result<()
 fn handle_messages(
     rx: &sync::mpsc::Receiver<Result<notify::Event, notify::Error>>,
     mqtt_client: &mqtt::Client,
-) {
+) -> paho_mqtt::errors::Result<()> {
     for res in rx {
         if let Ok(event) = res {
             for path in event.paths {
-                let message =
-                    mqtt::Message::new(MQTT_TOPIC, path.to_str().unwrap().as_bytes(), MQTT_QOS);
-                mqtt_client.publish(message).unwrap();
+                if let Some(path_str) = path.to_str() {
+                    let message = mqtt::Message::new(MQTT_TOPIC, path_str.as_bytes(), MQTT_QOS);
+                    mqtt_client.publish(message)?;
+                }
             }
             //println!("changed: {:?}", event);
             //println!("event kind: {:?}", event.kind);
         }
     }
+    Ok(())
 }
 pub fn main(path_str: &str) {
     let (tx, rx): (
@@ -139,5 +141,5 @@ pub fn main(path_str: &str) {
 
     mqtt_client.connect(conn_opts).unwrap();
 
-    handle_messages(&rx, &mqtt_client);
+    handle_messages(&rx, &mqtt_client).expect("Error during handling of message");
 }
