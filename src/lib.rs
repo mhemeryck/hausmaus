@@ -146,14 +146,14 @@ fn handle_messages(
 ) -> paho_mqtt::errors::Result<()> {
     for res in rx {
         if let Ok(event) = res {
+            //println!("changed: {:?}", event);
+            //println!("event kind: {:?}", event.kind);
             for path in event.paths {
                 if let Some(path_str) = path.to_str() {
                     let message = mqtt::Message::new(MQTT_TOPIC, path_str.as_bytes(), MQTT_QOS);
                     mqtt_client.publish(message)?;
                 }
             }
-            //println!("changed: {:?}", event);
-            //println!("event kind: {:?}", event.kind);
         }
     }
     Ok(())
