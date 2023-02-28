@@ -158,6 +158,7 @@ fn handle_messages(
     }
     Ok(())
 }
+
 pub fn main(path_str: &str) {
     let (tx, rx): (
         sync::mpsc::Sender<Result<notify::Event, notify::Error>>,
