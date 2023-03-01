@@ -2,13 +2,16 @@ use notify::{self, Watcher};
 use paho_mqtt as mqtt;
 use std::fs;
 use std::io;
+use std::io::Write;
 use std::path;
 use std::sync;
+use std::thread;
 use std::time;
 use std::vec;
 
 const FILENAME: &str = "ro_value";
-const POLL_INTERVAL: u64 = 250;
+const SUB_FILENAME: &str = "/home/mhemeryck/Projects/unipinotifiy/fixtures/sys/devices/platform/unipi_plc/io_group2/ro_2_03/ro_value";
+const POLL_INTERVAL: u64 = 200;
 
 const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
 const MQTT_CLIENT_ID: &str = "hausmaus";
@@ -17,6 +20,7 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 const MQTT_TOPIC: &str = "foo";
 // const MQTT_PAYLOAD: &[u8; 6] = b"Hello!";
 const MQTT_QOS: i32 = 2;
+const MQTT_TOPICS: &[&str] = &["bar", "qux"];
 
 #[cfg(test)]
 mod tests {
@@ -146,8 +150,8 @@ fn handle_messages(
 ) -> paho_mqtt::errors::Result<()> {
     for res in rx {
         if let Ok(event) = res {
-            //println!("changed: {:?}", event);
-            //println!("event kind: {:?}", event.kind);
+            println!("changed: {:?}", event);
+            println!("event kind: {:?}", event.kind);
             for path in event.paths {
                 if let Some(path_str) = path.to_str() {
                     let message = mqtt::Message::new(MQTT_TOPIC, path_str.as_bytes(), MQTT_QOS);
@@ -155,6 +159,13 @@ fn handle_messages(
                 }
             }
         }
+    }
+    Ok(())
+}
+
+fn subscribe_topics(client: &mqtt::Client) -> paho_mqtt::errors::Result<()> {
+    for topic in MQTT_TOPICS {
+        client.subscribe(topic, MQTT_QOS)?;
     }
     Ok(())
 }
@@ -179,7 +190,7 @@ pub fn main(path_str: &str) {
         .client_id(MQTT_CLIENT_ID.to_string())
         .finalize();
 
-    let mqtt_client = mqtt::Client::new(create_opts).unwrap();
+    let mqtt_client = sync::Arc::new(mqtt::Client::new(create_opts).unwrap());
 
     let conn_opts = mqtt::ConnectOptionsBuilder::new()
         .keep_alive_interval(time::Duration::from_secs(MQTT_KEEP_ALIVE))
@@ -188,5 +199,39 @@ pub fn main(path_str: &str) {
 
     mqtt_client.connect(conn_opts).unwrap();
 
-    handle_messages(&rx, &mqtt_client).expect("Error during handling of message");
+    // publisher thread!
+    let pub_mqtt_client = sync::Arc::clone(&mqtt_client);
+    let pub_thread = thread::spawn(move || {
+        handle_messages(&rx, &pub_mqtt_client).expect("Error during handling of message");
+    });
+
+    // subscriber thread
+    let sub_mqtt_client = sync::Arc::clone(&mqtt_client);
+    let sub_thread = thread::spawn(move || {
+        let sub = sub_mqtt_client.start_consuming();
+
+        subscribe_topics(&sub_mqtt_client).expect("Could not subscribe to one of the topics");
+
+        println!("Processing requests");
+        for msg in sub.iter() {
+            if let Some(msg) = msg {
+                println!("{}", msg);
+                if msg.topic() == "bar" {
+                    let mut fh =
+                        fs::File::create(&SUB_FILENAME).expect("Could not open file handle");
+                    write!(fh, "1").expect("Could not write to sub file name");
+                }
+            }
+        }
+
+        println!("Quit subscriber loop");
+        if sub_mqtt_client.is_connected() {
+            println!("Disconnecting");
+            sub_mqtt_client.unsubscribe_many(MQTT_TOPICS).unwrap();
+            sub_mqtt_client.disconnect(None).unwrap();
+        }
+    });
+
+    pub_thread.join().unwrap();
+    sub_thread.join().unwrap();
 }
