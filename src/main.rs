@@ -1,3 +1,7 @@
+use hausmaus;
+
+const PATH: &str = "/home/mhemeryck/Projects/unipinotifiy/fixtures";
+
 fn main() {
-    println!("Hello, world!");
+    hausmaus::main(PATH);
 }
