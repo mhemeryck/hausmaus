@@ -166,31 +166,9 @@ fn crawl(
             } else if !path.is_symlink() {
                 match path.to_str() {
                     Some(path_str) => {
-                        if let Some(captures) = re.captures(path_str) {
-                            //paths.push(path);
-                            if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
-                                captures.name("device_fmt"),
-                                captures.name("io_group"),
-                                captures.name("number"),
-                            ) {
-                                if let (Ok(io_group), Ok(number)) = (
-                                    io_group_str.as_str().parse::<i32>(),
-                                    number_str.as_str().parse::<i32>(),
-                                ) {
-                                    let device = Device {
-                                        device_type: match device_fmt.as_str() {
-                                            "di" => DeviceType::DigitalInput,
-                                            "do" => DeviceType::DigitalOutput,
-                                            "ro" => DeviceType::RelayOutput,
-                                            _ => panic!("Unknown device fmt"),
-                                        },
-                                        io_group,
-                                        number,
-                                    };
-                                    if !devices.contains(&device) {
-                                        devices.push(device);
-                                    }
-                                }
+                        if let Some(device) = Device::from_path(&path_str) {
+                            if !devices.contains(&device) {
+                                devices.push(device);
                             }
                         }
                     }
@@ -207,7 +185,12 @@ fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) -> Result<()
     // Paths
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
     let mut devices: vec::Vec<Device> = vec::Vec::new();
-    crawl(&path::Path::new(&path_str), &mut paths, FILENAME_PATTERN, &mut devices)?;
+    crawl(
+        &path::Path::new(&path_str),
+        &mut paths,
+        FILENAME_PATTERN,
+        &mut devices,
+    )?;
 
     for device in devices.iter() {
         println!("Device path: {:?}", device.path("/var/run"));
@@ -351,4 +334,36 @@ impl Device {
     /// Construct MQTT command topic from device name parts
     fn command_topic(&self, device_name: &str) -> &str {}
     */
+
+    /// Create a device just from a path string
+    fn from_path(path_str: &str) -> Option<Self> {
+        let re = Regex::new(FILENAME_PATTERN).unwrap();
+        if let Some(captures) = re.captures(path_str) {
+            //paths.push(path);
+            if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
+                captures.name("device_fmt"),
+                captures.name("io_group"),
+                captures.name("number"),
+            ) {
+                if let (Ok(io_group), Ok(number)) = (
+                    io_group_str.as_str().parse::<i32>(),
+                    number_str.as_str().parse::<i32>(),
+                ) {
+                    let device_type = match device_fmt.as_str() {
+                        "di" => DeviceType::DigitalInput,
+                        "do" => DeviceType::DigitalOutput,
+                        "ro" => DeviceType::RelayOutput,
+                        _ => panic!("Could not match against a valid device type"),
+                    };
+
+                    return Some(Self {
+                        device_type,
+                        io_group,
+                        number,
+                    })
+                }
+            }
+        }
+        None
+    }
 }
