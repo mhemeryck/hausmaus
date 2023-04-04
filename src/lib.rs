@@ -104,6 +104,37 @@ mod tests {
             assert_eq!(contents, "Hello world");
         }
     }
+
+    #[test]
+    fn test_device_path() {
+        let device = Device {
+            device_type: DeviceType::DigitalInput,
+            io_group: 1,
+            number: 3,
+        };
+        assert_eq!(
+            device.path("/var/run"),
+            "/var/run/io_group_1/di_1_03/di_value"
+        );
+        let device = Device {
+            device_type: DeviceType::DigitalOutput,
+            io_group: 2,
+            number: 4,
+        };
+        assert_eq!(
+            device.path("/var/run"),
+            "/var/run/io_group_2/do_2_04/do_value"
+        );
+        let device = Device {
+            device_type: DeviceType::RelayOutput,
+            io_group: 3,
+            number: 11,
+        };
+        assert_eq!(
+            device.path("/var/run"),
+            "/var/run/io_group_3/ro_3_11/ro_value"
+        );
+    }
 }
 
 /// Crawls a directory structure for filenames matching given input
@@ -234,4 +265,41 @@ pub fn main(path_str: &str) {
 
     pub_thread.join().unwrap();
     sub_thread.join().unwrap();
+}
+
+enum DeviceType {
+    DigitalInput,
+    DigitalOutput,
+    RelayOutput,
+}
+
+struct Device {
+    device_type: DeviceType,
+    io_group: i32,
+    number: i32,
+}
+
+impl Device {
+    /// file path from prefix built with device name parts
+    fn path(&self, prefix: &str) -> String {
+        format!(
+            "{prefix}/io_group_{io_group}/{device_fmt}_{io_group}_{number:02}/{device_fmt}_value",
+            prefix = prefix,
+            io_group = self.io_group,
+            number = self.number,
+            device_fmt = match self.device_type {
+                DeviceType::DigitalInput => "di",
+                DeviceType::DigitalOutput => "do",
+                DeviceType::RelayOutput => "ro",
+            },
+        )
+    }
+    /*
+
+    /// Construct MQTT state topic from device name parts
+    fn state_topic(&self, device_name: &str) -> &str {}
+
+    /// Construct MQTT command topic from device name parts
+    fn command_topic(&self, device_name: &str) -> &str {}
+    */
 }
