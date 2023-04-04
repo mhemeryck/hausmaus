@@ -201,7 +201,7 @@ fn subscribe_topics(client: &mqtt::Client) -> paho_mqtt::errors::Result<()> {
     Ok(())
 }
 
-pub fn main(path_str: &str) {
+pub fn run(path_str: &str) {
     let (tx, rx): (
         sync::mpsc::Sender<Result<notify::Event, notify::Error>>,
         sync::mpsc::Receiver<Result<notify::Event, notify::Error>>,
