@@ -312,6 +312,9 @@ struct Device {
 }
 
 impl Device {
+    const FILENAME_PATTERN: &str =
+        r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro_value)";
+
     /// file path from prefix built with device name parts
     fn path(&self, prefix: &str) -> String {
         format!(
@@ -337,33 +340,35 @@ impl Device {
 
     /// Create a device just from a path string
     fn from_path(path_str: &str) -> Option<Self> {
-        let re = Regex::new(FILENAME_PATTERN).unwrap();
+        let re = Regex::new(Self::FILENAME_PATTERN).unwrap();
         if let Some(captures) = re.captures(path_str) {
-            //paths.push(path);
             if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
                 captures.name("device_fmt"),
                 captures.name("io_group"),
                 captures.name("number"),
             ) {
+                // Map against device type from capture
+                let device_type = match device_fmt.as_str() {
+                    "di" => DeviceType::DigitalInput,
+                    "do" => DeviceType::DigitalOutput,
+                    "ro" => DeviceType::RelayOutput,
+                    _ => return None,
+                };
+
+                // Parse and cast from capture
                 if let (Ok(io_group), Ok(number)) = (
                     io_group_str.as_str().parse::<i32>(),
                     number_str.as_str().parse::<i32>(),
                 ) {
-                    let device_type = match device_fmt.as_str() {
-                        "di" => DeviceType::DigitalInput,
-                        "do" => DeviceType::DigitalOutput,
-                        "ro" => DeviceType::RelayOutput,
-                        _ => panic!("Could not match against a valid device type"),
-                    };
-
                     return Some(Self {
                         device_type,
                         io_group,
                         number,
-                    })
+                    });
                 }
             }
         }
+        // In all other cases, nothing was found
         None
     }
 }
