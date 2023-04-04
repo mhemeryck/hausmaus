@@ -1,5 +1,6 @@
 use notify::{self, Watcher};
 use paho_mqtt as mqtt;
+use regex::Regex;
 use std::fs;
 use std::io;
 use std::io::Write;
@@ -10,6 +11,8 @@ use std::time;
 use std::vec;
 
 const FILENAME: &str = "ro_value";
+const FILENAME_PATTERN: &str =
+    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro_value)";
 const SUB_FILENAME: &str = "/home/mhemeryck/Projects/unipinotifiy/fixtures/sys/devices/platform/unipi_plc/io_group2/ro_2_03/ro_value";
 const POLL_INTERVAL: u64 = 200;
 
@@ -42,6 +45,8 @@ mod tests {
         crawl(tmp_dir.path(), &mut paths, "foo").expect("Expect crawl to work");
 
         assert_eq!(paths.len(), 0);
+
+        tmp_dir.close().unwrap();
     }
 
     #[test]
@@ -58,13 +63,18 @@ mod tests {
 
         assert_eq!(paths.len(), 1);
         assert_eq!(paths[0], path);
+
+        tmp_dir.close().unwrap();
     }
 
     #[test]
     fn test_match_event() {
         let tmp_dir =
             tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
-        let path = tmp_dir.path().join(FILENAME);
+        let dir1 = tmp_dir.path().join("io_group2");
+        let dir1 = dir1.join("di_2_03");
+        fs::create_dir_all(&dir1).expect("Could not create intermediate folders");
+        let path = dir1.join("di_value");
         let mut tmp_file = fs::File::create(&path).expect("Could not open a new temp file");
         write!(tmp_file, "Hello").expect("Could not write contents to temp file");
 
@@ -103,6 +113,8 @@ mod tests {
                     .expect("Could not open temp file for reading");
             assert_eq!(contents, "Hello world");
         }
+
+        tmp_dir.close().unwrap();
     }
 
     #[test]
@@ -138,18 +150,48 @@ mod tests {
 }
 
 /// Crawls a directory structure for filenames matching given input
-fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) -> io::Result<()> {
+fn crawl(
+    dir: &path::Path,
+    paths: &mut vec::Vec<path::PathBuf>,
+    filename_pattern: &str,
+    devices: &mut vec::Vec<Device>,
+) -> io::Result<()> {
+    let re = Regex::new(filename_pattern).unwrap();
     if dir.is_dir() {
         for entry in fs::read_dir(dir)? {
             let entry: fs::DirEntry = entry?;
             let path = entry.path();
             if path.is_dir() {
-                crawl(&path, paths, filename)?;
+                crawl(&path, paths, filename_pattern, devices)?;
             } else if !path.is_symlink() {
                 match path.to_str() {
                     Some(path_str) => {
-                        if path_str.contains(filename) {
-                            paths.push(path);
+                        if let Some(captures) = re.captures(path_str) {
+                            //paths.push(path);
+                            if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
+                                captures.name("device_fmt"),
+                                captures.name("io_group"),
+                                captures.name("number"),
+                            ) {
+                                if let (Ok(io_group), Ok(number)) = (
+                                    io_group_str.as_str().parse::<i32>(),
+                                    number_str.as_str().parse::<i32>(),
+                                ) {
+                                    let device = Device {
+                                        device_type: match device_fmt.as_str() {
+                                            "di" => DeviceType::DigitalInput,
+                                            "do" => DeviceType::DigitalOutput,
+                                            "ro" => DeviceType::RelayOutput,
+                                            _ => panic!("Unknown device fmt"),
+                                        },
+                                        io_group,
+                                        number,
+                                    };
+                                    if !devices.contains(&device) {
+                                        devices.push(device);
+                                    }
+                                }
+                            }
                         }
                     }
                     None => {}
@@ -164,7 +206,12 @@ fn crawl(dir: &path::Path, paths: &mut vec::Vec<path::PathBuf>, filename: &str) 
 fn setup_watcher(path_str: &str, watcher: &mut notify::PollWatcher) -> Result<(), notify::Error> {
     // Paths
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
-    crawl(&path::Path::new(&path_str), &mut paths, FILENAME)?;
+    let mut devices: vec::Vec<Device> = vec::Vec::new();
+    crawl(&path::Path::new(&path_str), &mut paths, FILENAME_PATTERN, &mut devices)?;
+
+    for device in devices.iter() {
+        println!("Device path: {:?}", device.path("/var/run"));
+    }
 
     for path in paths.iter() {
         // println!("Path {:?}", path.canonicalize().unwrap());
@@ -267,12 +314,14 @@ pub fn run(path_str: &str) {
     sub_thread.join().unwrap();
 }
 
+#[derive(Eq, PartialEq)]
 enum DeviceType {
     DigitalInput,
     DigitalOutput,
     RelayOutput,
 }
 
+#[derive(Eq, PartialEq)]
 struct Device {
     device_type: DeviceType,
     io_group: i32,
