@@ -48,30 +48,34 @@ async fn wait_for_toggle(path: &std::path::Path, tx: tokio::sync::mpsc::Sender<(
     let mut last_toggle_time: Option<std::time::Instant> = None;
 
     loop {
+        // Go back to first line and read it again
         reader.seek(std::io::SeekFrom::Start(0)).await?;
         line.clear();
-
         reader.read_line(&mut line).await?;
 
+        // Parse to bool
         let value = match line.trim().parse::<u8>() {
             Ok(0) => false,
             Ok(1) => true,
             _ => continue, // skip invalid lines
         };
 
+        // Update last value and last toggle time
         if let Some(last_value) = last_value {
             if last_value != value {
                 let toggle_time = last_toggle_time
                     .map(|t| t.elapsed())
                     .unwrap_or_else(|| std::time::Duration::from_secs(0));
+                println!("Toggled! {:?} / {:?}", value, toggle_time);
                 tx.send((value, toggle_time)).await.unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {
             last_toggle_time = Some(std::time::Instant::now());
         }
-
         last_value = Some(value);
+
+        // Go to bed again!
         tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL)).await;
     }
 
@@ -82,12 +86,16 @@ async fn main() {
     // Crawl a folder for paths to watch based on a regex
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
+
+    let (tx, _rx) = tokio::sync::mpsc::channel(10);
+
     match crawl(&std::path::Path::new(&PATH), &re, &mut paths) {
         Ok(_) => {
             for path in paths.iter() {
                 println!("Found path: {:?}", path);
                 // Set up watcher
             }
+            wait_for_toggle(&paths[paths.len() - 1], tx.clone()).await.unwrap();
         }
         Err(error) => {
             panic!("PANIC: {:?}!", error);
