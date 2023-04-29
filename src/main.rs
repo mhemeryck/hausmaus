@@ -8,8 +8,10 @@ use std::time;
 use std::vec;
 
 const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
+// Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
-    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro_value)";
+    //r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
+    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/di_value$";
 const POLL_INTERVAL: u64 = 200;
 
 /// Crawls a directory structure for filenames matching given input
@@ -39,7 +41,8 @@ fn crawl(
     Ok(())
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // Crawl a folder for paths to watch based on a regex
     let mut paths: vec::Vec<path::PathBuf> = vec::Vec::new();
     let re = Regex::new(FILENAME_PATTERN).unwrap();
