@@ -90,6 +90,14 @@ async fn wait_for_toggle(
     }
 }
 
+//async fn receive_events(rx: &mut tokio::sync::mpsc::Receiver<(bool, std::time::Duration)>) -> std::io::Result<()> {
+//      for res in rx.recv().await {
+//          let (state, duration) = res;
+//          log::debug!("changed: {:?}, {:?}", state, duration);
+//      }
+//      Ok(())
+//}
+
 #[tokio::main]
 async fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
@@ -97,7 +105,7 @@ async fn main() {
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
 
-    let (tx, _rx) = tokio::sync::mpsc::channel(10);
+    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
 
     crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
     for path in paths.iter() {
@@ -105,7 +113,6 @@ async fn main() {
         // Set up watcher
     }
 
-    //let mut futures = std::vec::Vec::with_capacity(paths.len());
     let mut set = tokio::task::JoinSet::new();
     for path in paths {
         if let Some(path_str) = path.to_str() {
@@ -113,6 +120,12 @@ async fn main() {
             // futures.push(wait_for_toggle(path_str, tx.clone()));
             set.spawn(wait_for_toggle(path_str, tx.clone()));
         }
+    }
+
+    // Set up receiver as well
+    //set.spawn(receive_events(&mut rx));
+    while let Some((state, duration)) = rx.recv().await {
+        log::info!("changed: {:?}, {:?}", state, duration);
     }
 
     // Block all jobs
