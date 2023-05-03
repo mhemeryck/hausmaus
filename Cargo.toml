@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+env_logger = "0.10.0"
+log = "0.4.17"
 notify = "5.1.0"
 openssl = { version = "0.10.45", features = ["vendored"] }
 openssl-sys = "0.9.80"

@@ -1,8 +1,9 @@
+use env_logger;
+use log;
 use regex;
-use tokio;
 use std;
+use tokio;
 use tokio::io::{AsyncBufReadExt, AsyncSeekExt};
-
 
 const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
 // Check whether we need all devices here or just the digital inputs
@@ -39,8 +40,12 @@ fn crawl(
 }
 
 /// Wait for toggle on a specific path
-async fn wait_for_toggle(path: &std::path::Path, tx: tokio::sync::mpsc::Sender<(bool, std::time::Duration)>) -> std::io::Result<()> {
-    let file = tokio::fs::File::open(path).await?;
+async fn wait_for_toggle(
+    path: String,
+    tx: tokio::sync::mpsc::Sender<(bool, std::time::Duration)>,
+) -> std::io::Result<()> {
+    log::debug!("Start monitoring path {:?}", path);
+    let file = tokio::fs::File::open(&path).await?;
     let mut reader = tokio::io::BufReader::new(file);
     let mut line = String::new();
 
@@ -66,7 +71,12 @@ async fn wait_for_toggle(path: &std::path::Path, tx: tokio::sync::mpsc::Sender<(
                 let toggle_time = last_toggle_time
                     .map(|t| t.elapsed())
                     .unwrap_or_else(|| std::time::Duration::from_secs(0));
-                println!("Toggled! {:?} / {:?}", value, toggle_time);
+                log::debug!(
+                    "Toggled for path {:?} ! {:?} / {:?}",
+                    path,
+                    value,
+                    toggle_time
+                );
                 tx.send((value, toggle_time)).await.unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
@@ -78,29 +88,43 @@ async fn wait_for_toggle(path: &std::path::Path, tx: tokio::sync::mpsc::Sender<(
         // Go to bed again!
         tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL)).await;
     }
-
 }
 
 #[tokio::main]
 async fn main() {
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
     // Crawl a folder for paths to watch based on a regex
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
 
     let (tx, _rx) = tokio::sync::mpsc::channel(10);
 
-    match crawl(&std::path::Path::new(&PATH), &re, &mut paths) {
-        Ok(_) => {
-            for path in paths.iter() {
-                println!("Found path: {:?}", path);
-                // Set up watcher
-            }
-            wait_for_toggle(&paths[paths.len() - 1], tx.clone()).await.unwrap();
-        }
-        Err(error) => {
-            panic!("PANIC: {:?}!", error);
+    crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
+    for path in paths.iter() {
+        log::debug!("Found path: {:?}", path);
+        // Set up watcher
+    }
+
+    //let mut futures = std::vec::Vec::with_capacity(paths.len());
+    let mut set = tokio::task::JoinSet::new();
+    for path in paths {
+        if let Some(path_str) = path.to_str() {
+            let path_str = path_str.to_string();
+            // futures.push(wait_for_toggle(path_str, tx.clone()));
+            set.spawn(wait_for_toggle(path_str, tx.clone()));
         }
     }
+
+    // Block all jobs
+    while let Some(_) = set.join_next().await {
+        continue;
+    }
+
+    //for future in futures {
+    //    future.await.unwrap();
+    //}
+
+    //wait_for_toggle(&paths[paths.len() - 1], tx.clone()).await.unwrap();
 
     //for res in rx {
     //    if let Ok(event) = res {
