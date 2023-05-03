@@ -10,7 +10,7 @@ const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
 const FILENAME_PATTERN: &str =
     //r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
     r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/di_value$";
-const POLL_INTERVAL: u64 = 200;
+const POLL_INTERVAL: u64 = 250;
 
 /// Crawls a directory structure for filenames matching given input
 fn crawl(
