@@ -2,8 +2,7 @@ use env_logger;
 use log;
 use regex;
 use std;
-use tokio;
-use tokio::io::{AsyncBufReadExt, AsyncSeekExt};
+use std::io::{BufRead, Seek};
 
 const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
 // Check whether we need all devices here or just the digital inputs
@@ -40,13 +39,13 @@ fn crawl(
 }
 
 /// Wait for toggle on a specific path
-async fn wait_for_toggle(
+fn wait_for_toggle(
     path: String,
-    tx: tokio::sync::mpsc::Sender<(bool, std::time::Duration)>,
+    tx: std::sync::mpsc::Sender<(bool, std::time::Duration)>,
 ) -> std::io::Result<()> {
     log::debug!("Start monitoring path {:?}", path);
-    let file = tokio::fs::File::open(&path).await?;
-    let mut reader = tokio::io::BufReader::new(file);
+    let file = std::fs::File::open(&path)?;
+    let mut reader = std::io::BufReader::new(file);
     let mut line = String::new();
 
     let mut last_value: Option<bool> = None;
@@ -54,9 +53,9 @@ async fn wait_for_toggle(
 
     loop {
         // Go back to first line and read it again
-        reader.seek(std::io::SeekFrom::Start(0)).await?;
+        reader.seek(std::io::SeekFrom::Start(0))?;
         line.clear();
-        reader.read_line(&mut line).await?;
+        reader.read_line(&mut line)?;
 
         // Parse to bool
         let value = match line.trim().parse::<u8>() {
@@ -77,7 +76,7 @@ async fn wait_for_toggle(
                     value,
                     toggle_time
                 );
-                tx.send((value, toggle_time)).await.unwrap();
+                tx.send((value, toggle_time)).unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {
@@ -86,7 +85,7 @@ async fn wait_for_toggle(
         last_value = Some(value);
 
         // Go to bed again!
-        tokio::time::sleep(std::time::Duration::from_millis(POLL_INTERVAL)).await;
+        std::thread::sleep(std::time::Duration::from_millis(POLL_INTERVAL));
     }
 }
 
@@ -98,14 +97,13 @@ async fn wait_for_toggle(
 //      Ok(())
 //}
 
-#[tokio::main]
-async fn main() {
+fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
     // Crawl a folder for paths to watch based on a regex
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
 
-    let (tx, mut rx) = tokio::sync::mpsc::channel(10);
+    let (tx, rx) = std::sync::mpsc::channel();
 
     crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
     for path in paths.iter() {
@@ -113,24 +111,28 @@ async fn main() {
         // Set up watcher
     }
 
-    let mut set = tokio::task::JoinSet::new();
+    //let mut set = tokio::task::JoinSet::new();
+    let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
         if let Some(path_str) = path.to_str() {
             let path_str = path_str.to_string();
             // futures.push(wait_for_toggle(path_str, tx.clone()));
-            set.spawn(wait_for_toggle(path_str, tx.clone()));
+            let path_tx = tx.clone();
+            let handle = std::thread::spawn(move || {
+                wait_for_toggle(path_str, path_tx).unwrap();
+            });
+            handles.push(handle);
         }
     }
 
     // Set up receiver as well
     //set.spawn(receive_events(&mut rx));
-    while let Some((state, duration)) = rx.recv().await {
+    for (state, duration) in rx {
         log::info!("changed: {:?}, {:?}", state, duration);
     }
 
-    // Block all jobs
-    while let Some(_) = set.join_next().await {
-        continue;
+    for handle in handles {
+        handle.join().unwrap();
     }
 
     //for future in futures {
