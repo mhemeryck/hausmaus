@@ -2,9 +2,10 @@ use env_logger;
 use log;
 use regex;
 use std;
-use std::io::{BufRead, Seek};
+use std::io::{Read, Seek};
 
 const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
+//const PATH: &str = "/sys/devices/platform/unipi_plc/";
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
     //r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
@@ -46,7 +47,7 @@ fn wait_for_toggle(
     log::debug!("Start monitoring path {:?}", path);
     let file = std::fs::File::open(&path)?;
     let mut reader = std::io::BufReader::new(file);
-    let mut line = String::new();
+    let mut first_char = [0; 1];
 
     let mut last_value: Option<bool> = None;
     let mut last_toggle_time: Option<std::time::Instant> = None;
@@ -54,13 +55,13 @@ fn wait_for_toggle(
     loop {
         // Go back to first line and read it again
         reader.seek(std::io::SeekFrom::Start(0))?;
-        line.clear();
-        reader.read_line(&mut line)?;
+        reader.read_exact(&mut first_char)?;
+        let first_char = first_char[0] as char;
 
         // Parse to bool
-        let value = match line.trim().parse::<u8>() {
-            Ok(0) => false,
-            Ok(1) => true,
+        let value = match first_char {
+            '0' => false,
+            '1' => true,
             _ => continue, // skip invalid lines
         };
 
@@ -89,16 +90,9 @@ fn wait_for_toggle(
     }
 }
 
-//async fn receive_events(rx: &mut tokio::sync::mpsc::Receiver<(bool, std::time::Duration)>) -> std::io::Result<()> {
-//      for res in rx.recv().await {
-//          let (state, duration) = res;
-//          log::debug!("changed: {:?}, {:?}", state, duration);
-//      }
-//      Ok(())
-//}
-
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
     // Crawl a folder for paths to watch based on a regex
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
@@ -106,17 +100,12 @@ fn main() {
     let (tx, rx) = std::sync::mpsc::channel();
 
     crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
-    for path in paths.iter() {
-        log::debug!("Found path: {:?}", path);
-        // Set up watcher
-    }
 
-    //let mut set = tokio::task::JoinSet::new();
     let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
+        log::debug!("Found path: {:?}", path);
         if let Some(path_str) = path.to_str() {
             let path_str = path_str.to_string();
-            // futures.push(wait_for_toggle(path_str, tx.clone()));
             let path_tx = tx.clone();
             let handle = std::thread::spawn(move || {
                 wait_for_toggle(path_str, path_tx).unwrap();
@@ -125,31 +114,12 @@ fn main() {
         }
     }
 
-    // Set up receiver as well
-    //set.spawn(receive_events(&mut rx));
     for (state, duration) in rx {
         log::info!("changed: {:?}, {:?}", state, duration);
     }
 
+    // Block on the file handles processing
     for handle in handles {
         handle.join().unwrap();
     }
-
-    //for future in futures {
-    //    future.await.unwrap();
-    //}
-
-    //wait_for_toggle(&paths[paths.len() - 1], tx.clone()).await.unwrap();
-
-    //for res in rx {
-    //    if let Ok(event) = res {
-    //        println!("changed: {:?}", event);
-    //        println!("event kind: {:?}", event.kind);
-    //        for path in event.paths {
-    //            if let Some(path_str) = path.to_str() {
-    //                println!("path: {:?}", path_str);
-    //            }
-    //        }
-    //    }
-    //}
 }
