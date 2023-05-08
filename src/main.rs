@@ -4,8 +4,9 @@ use regex;
 use std;
 use std::io::{Read, Seek};
 
-const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
+//const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
 //const PATH: &str = "/sys/devices/platform/unipi_plc/";
+const PATH: &str = "/run/unipi";
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
     //r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
@@ -19,12 +20,20 @@ fn crawl(
     paths: &mut std::vec::Vec<std::path::PathBuf>,
 ) -> std::io::Result<()> {
     if dir.is_dir() {
+        log::debug!("Checking dir {:?}", dir);
         for entry in std::fs::read_dir(dir)? {
             let entry: std::fs::DirEntry = entry?;
             let path = entry.path();
+            log::debug!("Checking path {:?}", path);
+            // Skip symlinks to avoid infinite loops
+            if path.is_symlink() {
+                continue;
+            }
+
+            // dirs need to be crawled further
             if path.is_dir() {
                 crawl(&path, filename_regex, paths)?;
-            } else if !path.is_symlink() {
+            } else {
                 match path.to_str() {
                     Some(path_str) => {
                         if filename_regex.is_match(path_str) {
@@ -93,13 +102,17 @@ fn wait_for_toggle(
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
+    log::debug!("Start hausmaus");
+
     // Crawl a folder for paths to watch based on a regex
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
 
     let (tx, rx) = std::sync::mpsc::channel();
 
+    log::debug!("Start crawling path {:?}", PATH);
     crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
+    log::debug!("Finished crawling path {:?}", PATH);
 
     let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
