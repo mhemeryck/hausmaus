@@ -98,32 +98,11 @@ fn wait_for_toggle(
     }
 }
 
-fn main() {
-    // CLI args
-    let matches = clap::Command::new("hausmaus")
-        .arg(
-            clap::Arg::new("sysfs")
-                .default_value(PATH)
-                .long("sysfs-path")
-                .help("SysFS scan path")
-        )
-        .get_matches();
-
-    let sysfs_path = matches.get_one::<String>("sysfs").unwrap();
-
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
-
-    log::debug!("Start hausmaus");
-
-    // Crawl a folder for paths to watch based on a regex
-    let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
-    let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
-
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    log::debug!("Start crawling path {:?}", sysfs_path);
-    crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
-    log::debug!("Finished crawling path {:?}", sysfs_path);
+/// watch_input file events is the main block responsible for watching SysFS file events
+fn watch_input_file_events(
+    paths: std::vec::Vec<std::path::PathBuf>,
+    tx: std::sync::mpsc::Sender<(bool, std::time::Duration)>,
+) {
 
     let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
@@ -138,12 +117,47 @@ fn main() {
         }
     }
 
-    for (state, duration) in rx {
-        log::info!("changed: {:?}, {:?}", state, duration);
-    }
-
     // Block on the file handles processing
     for handle in handles {
         handle.join().unwrap();
+    }
+}
+
+/// START
+fn main() {
+    // CLI args
+    let matches = clap::Command::new("hausmaus")
+        .arg(
+            clap::Arg::new("sysfs")
+                .default_value(PATH)
+                .long("sysfs-path")
+                .help("SysFS scan path"),
+        )
+        .get_matches();
+    let sysfs_path = matches.get_one::<String>("sysfs").unwrap();
+
+    // log config
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
+    log::debug!("Start hausmaus");
+
+    // Crawl a folder for paths to watch based on a regex
+    log::debug!("Start crawling path {:?}", sysfs_path);
+    let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
+    let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
+    crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
+    log::debug!("Finished crawling path {:?}", sysfs_path);
+
+    let (file_tx, file_rx) = std::sync::mpsc::channel();
+
+    log::debug!("Start main file event watcher thread");
+    let file_event_paths = paths.clone();
+    let file_event_tx = file_tx.clone();
+    std::thread::spawn(move || {
+        watch_input_file_events(file_event_paths, file_event_tx);
+    });
+
+    for (state, duration) in file_rx {
+        log::info!("changed: {:?}, {:?}", state, duration);
     }
 }
