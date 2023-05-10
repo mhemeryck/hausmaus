@@ -10,7 +10,9 @@ const PATH: &str = "/run/unipi";
 const FILENAME_PATTERN: &str =
     //r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
     r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/di_value$";
-const POLL_INTERVAL: u64 = 250;
+const POLL_INTERVAL: u64 = 200;
+
+type FileEvent = (bool, std::time::Duration);
 
 /// Crawls a directory structure for filenames matching given input
 fn crawl(
@@ -48,10 +50,7 @@ fn crawl(
 }
 
 /// Wait for toggle on a specific path
-fn wait_for_toggle(
-    path: String,
-    tx: std::sync::mpsc::Sender<(bool, std::time::Duration)>,
-) -> std::io::Result<()> {
+fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std::io::Result<()> {
     log::debug!("Start monitoring path {:?}", path);
     let file = std::fs::File::open(&path)?;
     let mut reader = std::io::BufReader::new(file);
@@ -101,9 +100,8 @@ fn wait_for_toggle(
 /// watch_input file events is the main block responsible for watching SysFS file events
 fn watch_input_file_events(
     paths: std::vec::Vec<std::path::PathBuf>,
-    tx: std::sync::mpsc::Sender<(bool, std::time::Duration)>,
+    tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
-
     let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
         log::debug!("Found path: {:?}", path);
@@ -120,6 +118,24 @@ fn watch_input_file_events(
     // Block on the file handles processing
     for handle in handles {
         handle.join().unwrap();
+    }
+}
+
+/// write_events is just a dummy receiver writing output
+fn write_events(rx: std::sync::mpsc::Receiver<FileEvent>) {
+    for (state, duration) in rx {
+        log::info!("changed: {:?}, {:?}", state, duration);
+    }
+}
+
+/// maus is the main function bringing all channels together
+fn maus(
+    file_read_rx: std::sync::mpsc::Receiver<FileEvent>,
+    log_write_tx: std::sync::mpsc::Sender<FileEvent>,
+) {
+    // Simple pass-through, for now
+    for event in file_read_rx {
+        log_write_tx.send(event).unwrap();
     }
 }
 
@@ -148,16 +164,38 @@ fn main() {
     crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
     log::debug!("Finished crawling path {:?}", sysfs_path);
 
-    let (file_tx, file_rx) = std::sync::mpsc::channel();
+    let mut handles = std::vec::Vec::with_capacity(3);
+    // file read channel
+    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
+
+    //// MQTT write channel
+    //let (mqtt_write_tx, mqtt_write_rx) = std::sync::mpsc::channel();
+
+    // dummy log write channel
+    let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
 
     log::debug!("Start main file event watcher thread");
     let file_event_paths = paths.clone();
-    let file_event_tx = file_tx.clone();
-    std::thread::spawn(move || {
+    let file_event_tx = file_read_tx.clone();
+    let handle = std::thread::spawn(move || {
         watch_input_file_events(file_event_paths, file_event_tx);
     });
+    handles.push(handle);
 
-    for (state, duration) in file_rx {
-        log::info!("changed: {:?}, {:?}", state, duration);
+    log::debug!("Start thread to write to events");
+    let handle = std::thread::spawn(move || {
+        write_events(log_write_rx);
+    });
+    handles.push(handle);
+
+    log::debug!("Start thread to connect all together");
+    let handle = std::thread::spawn(move || {
+        maus(file_read_rx, log_write_tx);
+    });
+    handles.push(handle);
+
+    // Block on the file handles processing
+    for handle in handles {
+        handle.join().unwrap();
     }
 }
