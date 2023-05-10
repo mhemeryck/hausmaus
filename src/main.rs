@@ -1,11 +1,10 @@
+use clap;
 use env_logger;
 use log;
 use regex;
 use std;
 use std::io::{Read, Seek};
 
-//const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures";
-//const PATH: &str = "/sys/devices/platform/unipi_plc/";
 const PATH: &str = "/run/unipi";
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
@@ -100,6 +99,18 @@ fn wait_for_toggle(
 }
 
 fn main() {
+    // CLI args
+    let matches = clap::Command::new("hausmaus")
+        .arg(
+            clap::Arg::new("sysfs")
+                .default_value(PATH)
+                .long("sysfs-path")
+                .help("SysFS scan path")
+        )
+        .get_matches();
+
+    let sysfs_path = matches.get_one::<String>("sysfs").unwrap();
+
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
     log::debug!("Start hausmaus");
@@ -110,9 +121,9 @@ fn main() {
 
     let (tx, rx) = std::sync::mpsc::channel();
 
-    log::debug!("Start crawling path {:?}", PATH);
-    crawl(&std::path::Path::new(&PATH), &re, &mut paths).unwrap();
-    log::debug!("Finished crawling path {:?}", PATH);
+    log::debug!("Start crawling path {:?}", sysfs_path);
+    crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
+    log::debug!("Finished crawling path {:?}", sysfs_path);
 
     let mut handles = std::vec::Vec::with_capacity(paths.len());
     for path in paths {
