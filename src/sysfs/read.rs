@@ -1,9 +1,9 @@
 use std;
 use std::io::{Read, Seek};
 
-const POLL_INTERVAL: u64 = 200;
+use crate::sysfs::FileEvent;
 
-pub type FileEvent = (bool, std::time::Duration);
+const POLL_INTERVAL: u64 = 200;
 
 /// Wait for toggle on a specific path
 fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std::io::Result<()> {

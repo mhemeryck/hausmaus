@@ -1,4 +1,7 @@
+/// sysfs contains the interface the file system based view on IO
 pub mod read;
+
+pub type FileEvent = (bool, std::time::Duration);
 
 /// Crawls a directory structure for filenames matching given input
 pub fn crawl(
