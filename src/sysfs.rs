@@ -1,3 +1,5 @@
+pub mod read;
+
 /// Crawls a directory structure for filenames matching given input
 pub fn crawl(
     dir: &std::path::Path,

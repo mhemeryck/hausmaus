@@ -6,7 +6,6 @@ use std;
 
 use hausmaus;
 
-
 const PATH: &str = "/run/unipi";
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
@@ -55,7 +54,7 @@ fn main() {
     log::debug!("Start crawling path {:?}", sysfs_path);
     let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
-    hausmaus::sysfs::crawl::crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
+    hausmaus::sysfs::crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
     log::debug!("Finished crawling path {:?}", sysfs_path);
 
     let mut handles = std::vec::Vec::with_capacity(3);
