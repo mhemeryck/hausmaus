@@ -7,9 +7,11 @@ use std;
 pub fn run(
     file_read_rx: std::sync::mpsc::Receiver<FileEvent>,
     log_write_tx: std::sync::mpsc::Sender<FileEvent>,
+    mqtt_publish_tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
     // Simple pass-through, for now
     for event in file_read_rx {
         log_write_tx.send(event).unwrap();
+        mqtt_publish_tx.send(event).unwrap();
     }
 }

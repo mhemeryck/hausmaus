@@ -1,11 +1,15 @@
 use env_logger;
 use log;
+use paho_mqtt;
 use regex;
 use std;
 
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
     r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/di_value$";
+const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
+const MQTT_CLIENT_ID: &str = "hausmaus";
+const MQTT_KEEP_ALIVE: u64 = 20;
 
 /// run is the main entry point to start the maus
 ///
@@ -29,7 +33,18 @@ pub fn run(sysfs_path: &str) {
     // file read channel
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
 
-    //// MQTT write channel let (mqtt_write_tx, mqtt_write_rx) = std::sync::mpsc::channel();
+    // MQTT setup
+    let create_opts = paho_mqtt::CreateOptionsBuilder::new()
+        .server_uri(MQTT_HOST)
+        .client_id(MQTT_CLIENT_ID.to_string())
+        .finalize();
+    let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
+        .keep_alive_interval(std::time::Duration::from_secs(MQTT_KEEP_ALIVE))
+        .clean_session(true)
+        .finalize();
+    let mqtt_client = std::sync::Arc::new(paho_mqtt::Client::new(create_opts).unwrap());
+    mqtt_client.connect(conn_opts).unwrap();
+    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
 
     // dummy log write channel
     let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
@@ -50,7 +65,13 @@ pub fn run(sysfs_path: &str) {
 
     log::debug!("Start thread to connect all together");
     let handle = std::thread::spawn(move || {
-        crate::auto::run(file_read_rx, log_write_tx);
+        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_tx);
+    });
+    handles.push(handle);
+
+    log::debug!("Start thread to connect to handle MQTT publishing");
+    let handle = std::thread::spawn(move || {
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_client).unwrap();
     });
     handles.push(handle);
 
