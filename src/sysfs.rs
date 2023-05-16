@@ -1,8 +1,10 @@
 /// sysfs contains the interface the file system based view on IO
 pub mod read;
 
-pub type FileEvent = (bool, std::time::Duration);
+pub type FileEvent = (std::sync::Arc<Device>, bool, std::time::Duration);
+
 use crate::device::{Device, DeviceType};
+use std;
 
 const FILENAME_PATTERN: &str =
     r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value";

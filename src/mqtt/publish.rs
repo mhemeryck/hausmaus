@@ -12,8 +12,8 @@ pub fn publish_messages(
     rx: std::sync::mpsc::Receiver<FileEvent>,
     mqtt_client: &paho_mqtt::Client,
 ) -> paho_mqtt::errors::Result<()> {
-    for (state, duration) in rx {
-        log::debug!("changed: {:?}, {:?}", state, duration);
+    for (device, state, duration) in rx {
+        log::debug!("changed: {:?}, {:?}, {:?}", device, state, duration);
         let message_str = format!("{}|{:?}", state, duration);
         let message = paho_mqtt::Message::new(MQTT_TOPIC, message_str.as_bytes(), paho_mqtt::QOS_2);
         mqtt_client.publish(message)?;

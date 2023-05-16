@@ -2,6 +2,7 @@ use std;
 use std::io::{Read, Seek};
 
 use crate::sysfs::FileEvent;
+use crate::sysfs;
 
 const POLL_INTERVAL: u64 = 200;
 
@@ -14,6 +15,9 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
 
     let mut last_value: Option<bool> = None;
     let mut last_toggle_time: Option<std::time::Instant> = None;
+
+    let device = sysfs::device_from_path(&path).unwrap();
+    let device = std::sync::Arc::new(device);
 
     loop {
         // Go back to first line and read it again
@@ -40,7 +44,8 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
                     value,
                     toggle_time
                 );
-                tx.send((value, toggle_time)).unwrap();
+                let device_clone = std::sync::Arc::clone(&device);
+                tx.send((device_clone, value, toggle_time)).unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {

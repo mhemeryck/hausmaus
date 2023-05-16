@@ -11,7 +11,9 @@ pub fn run(
 ) {
     // Simple pass-through, for now
     for event in file_read_rx {
+        // quick clone such that we can also send it to mqtt
+        let event_clone = event.clone();
         log_write_tx.send(event).unwrap();
-        mqtt_publish_tx.send(event).unwrap();
+        mqtt_publish_tx.send(event_clone).unwrap();
     }
 }
