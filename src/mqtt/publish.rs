@@ -6,7 +6,6 @@ use std;
 use crate::sysfs::FileEvent;
 
 const MQTT_TOPIC: &str = "foo";
-const MQTT_QOS: i32 = 2;
 
 /// handle_messages receives any file events and sends them out over MQTT
 pub fn publish_messages(
@@ -16,7 +15,7 @@ pub fn publish_messages(
     for (state, duration) in rx {
         log::debug!("changed: {:?}, {:?}", state, duration);
         let message_str = format!("{}|{:?}", state, duration);
-        let message = paho_mqtt::Message::new(MQTT_TOPIC, message_str.as_bytes(), MQTT_QOS);
+        let message = paho_mqtt::Message::new(MQTT_TOPIC, message_str.as_bytes(), paho_mqtt::QOS_2);
         mqtt_client.publish(message)?;
     }
     Ok(())

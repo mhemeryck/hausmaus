@@ -3,3 +3,4 @@ pub mod sysfs;
 pub mod auto;
 pub mod dummy;
 pub mod mqtt;
+pub mod device;

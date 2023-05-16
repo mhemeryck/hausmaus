@@ -2,6 +2,10 @@
 pub mod read;
 
 pub type FileEvent = (bool, std::time::Duration);
+use crate::device::{Device, DeviceType};
+
+const FILENAME_PATTERN: &str =
+    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value";
 
 /// Crawls a directory structure for filenames matching given input
 pub fn crawl(
@@ -36,6 +40,40 @@ pub fn crawl(
         }
     }
     Ok(())
+}
+
+/// Create a device from a path string
+fn device_from_path(path_str: &str) -> Option<Device> {
+    let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
+    if let Some(captures) = re.captures(path_str) {
+        if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
+            captures.name("device_fmt"),
+            captures.name("io_group"),
+            captures.name("number"),
+        ) {
+            // Map against device type from capture
+            let device_type = match device_fmt.as_str() {
+                "di" => DeviceType::DigitalInput,
+                "do" => DeviceType::DigitalOutput,
+                "ro" => DeviceType::RelayOutput,
+                _ => return None,
+            };
+
+            // Parse and cast from capture
+            if let (Ok(io_group), Ok(number)) = (
+                io_group_str.as_str().parse::<i32>(),
+                number_str.as_str().parse::<i32>(),
+            ) {
+                return Some(Device {
+                    device_type,
+                    io_group,
+                    number,
+                });
+            }
+        }
+    }
+    // In all other cases, nothing was found
+    None
 }
 
 #[cfg(test)]
@@ -82,5 +120,25 @@ mod tests {
         assert_eq!(paths[0], path);
 
         tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_device_from_path() {
+        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
+        if let Some(device) = device_from_path(&path) {
+            assert_eq!(device.number, 7);
+            assert_eq!(device.io_group, 2);
+            assert_eq!(device.device_type, DeviceType::DigitalInput);
+        } else {
+            panic!("Could not find a device from path");
+        }
+    }
+
+    #[test]
+    fn test_device_from_path_not_found() {
+        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
+        if let Some(_) = device_from_path(&path) {
+            panic!("It shouldn't find a device in this case!");
+        }
     }
 }
