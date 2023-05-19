@@ -5,6 +5,8 @@ use crate::sysfs::FileEvent;
 use crate::sysfs;
 
 const POLL_INTERVAL: u64 = 200;
+// TODO: replace by injecting value
+const DEVICE_NAME: &str = "FOO";
 
 /// Wait for toggle on a specific path
 fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std::io::Result<()> {
@@ -16,7 +18,7 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
     let mut last_value: Option<bool> = None;
     let mut last_toggle_time: Option<std::time::Instant> = None;
 
-    let device = sysfs::device_from_path(&path).unwrap();
+    let device = sysfs::device_from_path(&DEVICE_NAME, &path).unwrap();
     let device = std::sync::Arc::new(device);
 
     loop {

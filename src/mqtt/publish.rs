@@ -20,3 +20,6 @@ pub fn publish_messages(
     }
     Ok(())
 }
+
+fn state_topic_for_device(device: &crate::device::Device) {
+}

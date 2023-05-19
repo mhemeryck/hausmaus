@@ -45,7 +45,7 @@ pub fn crawl(
 }
 
 /// Create a device from a path string
-fn device_from_path(path_str: &str) -> Option<Device> {
+fn device_from_path(name_str: &str, path_str: &str) -> Option<Device> {
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
     if let Some(captures) = re.captures(path_str) {
         if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
@@ -66,7 +66,9 @@ fn device_from_path(path_str: &str) -> Option<Device> {
                 io_group_str.as_str().parse::<i32>(),
                 number_str.as_str().parse::<i32>(),
             ) {
+                let name = name_str.to_string();
                 return Some(Device {
+                    name,
                     device_type,
                     io_group,
                     number,
@@ -126,8 +128,10 @@ mod tests {
 
     #[test]
     fn test_device_from_path() {
+        let name = "foo";
         let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
-        if let Some(device) = device_from_path(&path) {
+        if let Some(device) = device_from_path(&name, &path) {
+            assert_eq!(device.name, "foo");
             assert_eq!(device.number, 7);
             assert_eq!(device.io_group, 2);
             assert_eq!(device.device_type, DeviceType::DigitalInput);
@@ -138,8 +142,9 @@ mod tests {
 
     #[test]
     fn test_device_from_path_not_found() {
+        let name = "foo";
         let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
-        if let Some(_) = device_from_path(&path) {
+        if let Some(_) = device_from_path(&name, &path) {
             panic!("It shouldn't find a device in this case!");
         }
     }
