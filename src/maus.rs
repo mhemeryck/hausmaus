@@ -45,7 +45,7 @@ pub async fn run(sysfs_path: &str) {
         .finalize();
     let mqtt_client = std::sync::Arc::new(paho_mqtt::Client::new(create_opts).unwrap());
     mqtt_client.connect(conn_opts).unwrap();
-    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
+    let (mqtt_publish_tx, mqtt_publish_rx) = tokio::sync::mpsc::channel(4);
 
     // dummy log write channel
     let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
@@ -64,9 +64,10 @@ pub async fn run(sysfs_path: &str) {
     });
     handles.push(handle);
 
+    let mqtt_publish_clone = mqtt_publish_tx.clone();
     log::debug!("Start thread to connect all together");
     let handle = tokio::spawn(async move {
-        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_tx).await;
+        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_clone).await;
     });
     handles.push(handle);
 
