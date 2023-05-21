@@ -17,7 +17,8 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 /// - all input reader threads
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
-pub fn run(sysfs_path: &str) {
+#[tokio::main]
+pub async fn run(sysfs_path: &str) {
     // log config
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
 
@@ -52,31 +53,33 @@ pub fn run(sysfs_path: &str) {
     log::debug!("Start main file event watcher thread");
     let file_event_paths = paths.clone();
     let file_event_tx = file_read_tx.clone();
-    let handle = std::thread::spawn(move || {
-        crate::sysfs::read::watch_input_file_events(file_event_paths, file_event_tx);
+    let handle = tokio::spawn(async move {
+        crate::sysfs::read::watch_input_file_events(file_event_paths, file_event_tx).await;
     });
     handles.push(handle);
 
     log::debug!("Start thread to write to events");
-    let handle = std::thread::spawn(move || {
-        crate::dummy::write_events(log_write_rx);
+    let handle = tokio::spawn(async move {
+        crate::dummy::write_events(log_write_rx).await;
     });
     handles.push(handle);
 
     log::debug!("Start thread to connect all together");
-    let handle = std::thread::spawn(move || {
-        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_tx);
+    let handle = tokio::spawn(async move {
+        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_tx).await;
     });
     handles.push(handle);
 
     log::debug!("Start thread to connect to handle MQTT publishing");
-    let handle = std::thread::spawn(move || {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_client).unwrap();
+    let handle = tokio::spawn(async move {
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_client)
+            .await
+            .unwrap();
     });
     handles.push(handle);
 
     // Block on the file handles processing
     for handle in handles {
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
 }

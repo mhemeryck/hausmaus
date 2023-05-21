@@ -1,6 +1,6 @@
-pub mod maus;
-pub mod sysfs;
 pub mod auto;
-pub mod dummy;
-pub mod mqtt;
 pub mod device;
+pub mod dummy;
+pub mod maus;
+pub mod mqtt;
+pub mod sysfs;

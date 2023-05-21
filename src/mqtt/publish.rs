@@ -8,7 +8,7 @@ use crate::sysfs::FileEvent;
 const MQTT_TOPIC: &str = "foo";
 
 /// handle_messages receives any file events and sends them out over MQTT
-pub fn publish_messages(
+pub async fn publish_messages(
     rx: std::sync::mpsc::Receiver<FileEvent>,
     mqtt_client: &paho_mqtt::Client,
 ) -> paho_mqtt::errors::Result<()> {
@@ -21,5 +21,4 @@ pub fn publish_messages(
     Ok(())
 }
 
-fn state_topic_for_device(device: &crate::device::Device) {
-}
+fn state_topic_for_device(device: &crate::device::Device) {}

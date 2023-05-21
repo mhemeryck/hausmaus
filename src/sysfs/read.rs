@@ -1,8 +1,9 @@
 use std;
 use std::io::{Read, Seek};
 
-use crate::sysfs::FileEvent;
 use crate::sysfs;
+use crate::sysfs::FileEvent;
+use tokio;
 
 const POLL_INTERVAL: u64 = 200;
 // TODO: replace by injecting value
@@ -61,7 +62,7 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
 }
 
 /// watch_input file events is the main block responsible for watching SysFS file events
-pub fn watch_input_file_events(
+pub async fn watch_input_file_events(
     paths: std::vec::Vec<std::path::PathBuf>,
     tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
@@ -71,7 +72,7 @@ pub fn watch_input_file_events(
         if let Some(path_str) = path.to_str() {
             let path_str = path_str.to_string();
             let path_tx = tx.clone();
-            let handle = std::thread::spawn(move || {
+            let handle = tokio::task::spawn_blocking(move || {
                 wait_for_toggle(path_str, path_tx).unwrap();
             });
             handles.push(handle);
@@ -80,6 +81,6 @@ pub fn watch_input_file_events(
 
     // Block on the file handles processing
     for handle in handles {
-        handle.join().unwrap();
+        handle.await.unwrap();
     }
 }
