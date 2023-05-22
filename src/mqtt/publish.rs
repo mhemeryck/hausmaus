@@ -11,7 +11,10 @@ pub async fn publish_messages(
 ) -> paho_mqtt::errors::Result<()> {
     while let Some((device, state, duration)) = rx.recv().await {
         log::debug!("changed: {:?}, {:?}, {:?}", device, state, duration);
-        let message_str = format!("{} | {} | {:?}", device.name, state, duration);
+        let message_str = match state {
+            true => "ON",
+            false => "OFF",
+        };
         let message = paho_mqtt::Message::new(state_topic_for_device(&device), message_str.as_bytes(), paho_mqtt::QOS_2);
         mqtt_client.publish(message)?;
     }
