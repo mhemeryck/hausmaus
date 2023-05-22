@@ -1,20 +1,43 @@
-use clap;
+use clap::Parser;
 
 use hausmaus;
+use hostname;
+use slug;
 
-const PATH: &str = "/run/unipi";
+#[derive(Parser)]
+#[command(version, about)]
+struct Cli {
+    // Optional sysfs root path to start scanning for files
+    #[arg(long, value_name = "/run/unipi")]
+    sysfs: Option<String>,
+
+    // Optional host name to pass in, used for root MQTT topic
+    #[arg(long)]
+    device_name: Option<String>,
+}
 
 fn main() {
-    // CLI args
-    let matches = clap::Command::new("hausmaus")
-        .arg(
-            clap::Arg::new("sysfs")
-                .default_value(PATH)
-                .long("sysfs-path")
-                .help("SysFS scan path"),
-        )
-        .get_matches();
-    let sysfs_path = matches.get_one::<String>("sysfs").unwrap();
+    let cli = Cli::parse();
+
+    let sysfs_path: &str = cli.sysfs.as_deref().unwrap();
+
+    //let device_name: &str = match cli.device_name.as_deref() {
+    //    Some(device_name) => device_name,
+    //    None => {
+    //        let result = hostname::get();
+    //        match result {
+    //            Ok(ref os_string) => {
+    //                match os_string.to_str() {
+    //                    Some(str_ref) => str_ref,
+    //                    None => "unknown",
+    //                }
+    //            },
+    //            Err(_) => "unknown",
+    //        }
+    //    },
+    //};
+    //let device_name = slug::slugify(device_name);
+    //println!("Device name {}", device_name);
 
     hausmaus::maus::run(&sysfs_path);
 }

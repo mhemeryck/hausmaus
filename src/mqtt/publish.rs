@@ -15,7 +15,11 @@ pub async fn publish_messages(
             true => "ON",
             false => "OFF",
         };
-        let message = paho_mqtt::Message::new(state_topic_for_device(&device), message_str.as_bytes(), paho_mqtt::QOS_2);
+        let message = paho_mqtt::Message::new(
+            state_topic_for_device(&device),
+            message_str.as_bytes(),
+            paho_mqtt::QOS_2,
+        );
         mqtt_client.publish(message)?;
     }
     Ok(())

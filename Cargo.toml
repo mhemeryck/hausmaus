@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-clap = "4.2.7"
+clap = { version = "4.2.7", features = ["derive"] }
 env_logger = "0.10.0"
 log = "0.4.17"
 paho-mqtt = "0.12.1"
@@ -12,6 +12,8 @@ openssl = { version = "0.10.45", features = ["vendored"] }
 openssl-sys = "0.9.80"
 regex = "1.7.3"
 tokio = { version = "1.28.1", features = ["full"] }
+slug = "0.1.4"
+hostname = "0.3.1"
 
 [dev-dependencies]
 tempdir = "0.3.7"
