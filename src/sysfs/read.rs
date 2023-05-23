@@ -6,11 +6,13 @@ use crate::sysfs::FileEvent;
 use tokio;
 
 const POLL_INTERVAL: u64 = 200;
-// TODO: replace by injecting value
-const DEVICE_NAME: &str = "FOO";
 
 /// Wait for toggle on a specific path
-fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std::io::Result<()> {
+fn wait_for_toggle(
+    path: String,
+    device_name: String,
+    tx: std::sync::mpsc::Sender<FileEvent>,
+) -> std::io::Result<()> {
     log::debug!("Start monitoring path {:?}", path);
     let file = std::fs::File::open(&path)?;
     let mut reader = std::io::BufReader::new(file);
@@ -19,7 +21,7 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
     let mut last_value: Option<bool> = None;
     let mut last_toggle_time: Option<std::time::Instant> = None;
 
-    let device = sysfs::device_from_path(&DEVICE_NAME, &path).unwrap();
+    let device = sysfs::device_from_path(&device_name.as_str(), &path).unwrap();
     let device = std::sync::Arc::new(device);
 
     loop {
@@ -64,6 +66,7 @@ fn wait_for_toggle(path: String, tx: std::sync::mpsc::Sender<FileEvent>) -> std:
 /// watch_input file events is the main block responsible for watching SysFS file events
 pub async fn watch_input_file_events(
     paths: std::vec::Vec<std::path::PathBuf>,
+    device_name: String,
     tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
     let mut handles = std::vec::Vec::with_capacity(paths.len());
@@ -72,8 +75,9 @@ pub async fn watch_input_file_events(
         if let Some(path_str) = path.to_str() {
             let path_str = path_str.to_string();
             let path_tx = tx.clone();
+            let device_name_clone = device_name.clone();
             let handle = tokio::task::spawn_blocking(move || {
-                wait_for_toggle(path_str, path_tx).unwrap();
+                wait_for_toggle(path_str, device_name_clone, path_tx).unwrap();
             });
             handles.push(handle);
         }

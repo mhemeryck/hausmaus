@@ -18,9 +18,13 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
 #[tokio::main]
-pub async fn run(sysfs_path: &str) {
+pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     // log config
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    let log_level = match debug {
+        true => "debug",
+        false => "info",
+    };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     log::debug!("Start hausmaus");
     // Crawl a folder for paths to watch based on a regex
@@ -29,6 +33,9 @@ pub async fn run(sysfs_path: &str) {
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
     crate::sysfs::crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
     log::debug!("Finished crawling path {:?}", sysfs_path);
+
+    // turn into mut ref
+    let device_name = device_name.to_string();
 
     let mut handles = std::vec::Vec::with_capacity(3);
     // file read channel
@@ -53,8 +60,14 @@ pub async fn run(sysfs_path: &str) {
     log::debug!("Start main file event watcher thread");
     let file_event_paths = paths.clone();
     let file_event_tx = file_read_tx.clone();
+    let device_name_clone = device_name.clone();
     let handle = tokio::spawn(async move {
-        crate::sysfs::read::watch_input_file_events(file_event_paths, file_event_tx).await;
+        crate::sysfs::read::watch_input_file_events(
+            file_event_paths,
+            device_name_clone,
+            file_event_tx,
+        )
+        .await;
     });
     handles.push(handle);
 
