@@ -80,6 +80,21 @@ fn device_from_path(name_str: &str, path_str: &str) -> Option<Device> {
     None
 }
 
+/// Build a list of devices from a list paths
+pub fn devices_from_paths(
+    name_str: &str,
+    paths: &std::vec::Vec<std::path::PathBuf>,
+    devices: &mut std::vec::Vec<crate::device::Device>,
+) {
+    for path in paths {
+        if let Some(path_str) = path.to_str() {
+            if let Some(device) = device_from_path(&name_str, path_str) {
+                devices.push(device);
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

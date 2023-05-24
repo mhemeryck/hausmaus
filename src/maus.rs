@@ -37,7 +37,12 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     // turn into mut ref
     let device_name = device_name.to_string();
 
-    let mut handles = std::vec::Vec::with_capacity(3);
+    let mut handles = std::vec::Vec::new();
+
+    // create list of devices
+    let mut devices: std::vec::Vec<crate::device::Device> = std::vec::Vec::new();
+    crate::sysfs::devices_from_paths(device_name.as_str(), &paths, &mut devices);
+
     // file read channel
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
 
@@ -85,8 +90,17 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     handles.push(handle);
 
     log::debug!("Start thread to connect to handle MQTT publishing");
+    let mqtt_publish_client = mqtt_client.clone();
     let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_client)
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_publish_client)
+            .await
+            .unwrap();
+    });
+    handles.push(handle);
+
+    log::debug!("Start thread to to subscribe to MQTT command topics");
+    let handle = tokio::spawn(async move {
+        crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &devices)
             .await
             .unwrap();
     });
