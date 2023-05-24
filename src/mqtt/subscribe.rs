@@ -2,15 +2,36 @@
 use log;
 use paho_mqtt;
 
+/// handle incoming messages
+pub async fn handle_incoming_messages(
+    mqtt_client: &paho_mqtt::AsyncClient,
+    devices: &std::vec::Vec<crate::device::Device>,
+) -> paho_mqtt::errors::Result<()> {
+    // Receive channel
+    let mqtt_rx: paho_mqtt::Receiver<Option<paho_mqtt::Message>> = mqtt_client.start_consuming();
+    // Subscribe to command topics for devices
+    subscribe_topics(&mqtt_client, &devices).await?;
+
+    // handle message
+    for msg in mqtt_rx {
+        if let Some(msg) = msg {
+            log::debug!("Get msg {:?} for topic {:?} payload {:?}", msg, msg.topic(), msg.payload_str());
+        }
+    }
+    Ok(())
+}
+
 /// subscribe to a series of topics
-pub async fn subscribe_topics(
+async fn subscribe_topics(
     mqtt_client: &paho_mqtt::AsyncClient,
     devices: &std::vec::Vec<crate::device::Device>,
 ) -> paho_mqtt::errors::Result<()> {
     for device in devices {
         let topic = command_topic_for_device(&device);
         log::debug!("Subscribing for device {:?} to topic {:?}", device, topic);
-        mqtt_client.subscribe(topic.as_str(), paho_mqtt::QOS_2).await?;
+        mqtt_client
+            .subscribe(topic.as_str(), paho_mqtt::QOS_2)
+            .await?;
     }
     Ok(())
 }

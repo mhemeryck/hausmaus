@@ -98,9 +98,9 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     });
     handles.push(handle);
 
-    log::debug!("Start thread to to subscribe to MQTT command topics");
+    log::debug!("Start thread to subscribe to MQTT command topics");
     let handle = tokio::spawn(async move {
-        crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &devices)
+        crate::mqtt::subscribe::handle_incoming_messages(&mqtt_client, &devices)
             .await
             .unwrap();
     });
