@@ -4,13 +4,13 @@ use paho_mqtt;
 
 /// subscribe to a series of topics
 pub async fn subscribe_topics(
-    mqtt_client: &paho_mqtt::Client,
+    mqtt_client: &paho_mqtt::AsyncClient,
     devices: &std::vec::Vec<crate::device::Device>,
 ) -> paho_mqtt::errors::Result<()> {
     for device in devices {
         let topic = command_topic_for_device(&device);
         log::debug!("Subscribing for device {:?} to topic {:?}", device, topic);
-        mqtt_client.subscribe(topic.as_str(), paho_mqtt::QOS_2)?;
+        mqtt_client.subscribe(topic.as_str(), paho_mqtt::QOS_2).await?;
     }
     Ok(())
 }

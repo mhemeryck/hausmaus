@@ -55,8 +55,8 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
         .keep_alive_interval(std::time::Duration::from_secs(MQTT_KEEP_ALIVE))
         .clean_session(true)
         .finalize();
-    let mqtt_client = std::sync::Arc::new(paho_mqtt::Client::new(create_opts).unwrap());
-    mqtt_client.connect(conn_opts).unwrap();
+    let mqtt_client = std::sync::Arc::new(paho_mqtt::AsyncClient::new(create_opts).unwrap());
+    mqtt_client.connect(conn_opts).await.unwrap();
     let (mqtt_publish_tx, mqtt_publish_rx) = tokio::sync::mpsc::channel(4);
 
     // dummy log write channel

@@ -7,7 +7,7 @@ use crate::sysfs::FileEvent;
 /// handle_messages receives any file events and sends them out over MQTT
 pub async fn publish_messages(
     mut rx: tokio::sync::mpsc::Receiver<FileEvent>,
-    mqtt_client: &paho_mqtt::Client,
+    mqtt_client: &paho_mqtt::AsyncClient,
 ) -> paho_mqtt::errors::Result<()> {
     while let Some((device, state, duration)) = rx.recv().await {
         log::debug!("changed: {:?}, {:?}, {:?}", device, state, duration);
@@ -20,7 +20,7 @@ pub async fn publish_messages(
             message_str.as_bytes(),
             paho_mqtt::QOS_2,
         );
-        mqtt_client.publish(message)?;
+        mqtt_client.publish(message).await?;
     }
     Ok(())
 }
