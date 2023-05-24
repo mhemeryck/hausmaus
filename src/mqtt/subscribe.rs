@@ -10,7 +10,9 @@ pub async fn handle_incoming_messages(
     // Receive channel
     let mqtt_rx: paho_mqtt::Receiver<Option<paho_mqtt::Message>> = mqtt_client.start_consuming();
     // Subscribe to command topics for devices
-    subscribe_topics(&mqtt_client, &devices).await?;
+    let mut topics: std::vec::Vec<String> = std::vec::Vec::with_capacity(devices.len());
+    command_topics_for_devices(&devices, &mut topics).await;
+    mqtt_client.subscribe_many(&topics, &std::vec![paho_mqtt::QOS_2; topics.len()]).await?;
 
     // handle message
     for msg in mqtt_rx {
@@ -18,22 +20,23 @@ pub async fn handle_incoming_messages(
             log::debug!("Get msg {:?} for topic {:?} payload {:?}", msg, msg.topic(), msg.payload_str());
         }
     }
+
+    // cleanup in case we'd quit
+    if mqtt_client.is_connected() {
+        mqtt_client.unsubscribe_many(&topics).await?;
+        mqtt_client.disconnect(None).await?;
+    }
     Ok(())
 }
 
 /// subscribe to a series of topics
-async fn subscribe_topics(
-    mqtt_client: &paho_mqtt::AsyncClient,
+async fn command_topics_for_devices(
     devices: &std::vec::Vec<crate::device::Device>,
-) -> paho_mqtt::errors::Result<()> {
+    topics: &mut std::vec::Vec<String>,
+) {
     for device in devices {
-        let topic = command_topic_for_device(&device);
-        log::debug!("Subscribing for device {:?} to topic {:?}", device, topic);
-        mqtt_client
-            .subscribe(topic.as_str(), paho_mqtt::QOS_2)
-            .await?;
+        topics.push(command_topic_for_device(&device));
     }
-    Ok(())
 }
 
 fn command_topic_for_device(device: &crate::device::Device) -> String {
