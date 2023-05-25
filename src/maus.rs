@@ -3,6 +3,7 @@ use log;
 use paho_mqtt;
 use regex;
 use std;
+use futures;
 
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
@@ -57,7 +58,7 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
         .finalize();
     let mqtt_client = std::sync::Arc::new(paho_mqtt::AsyncClient::new(create_opts).unwrap());
     mqtt_client.connect(conn_opts).await.unwrap();
-    let (mqtt_publish_tx, mqtt_publish_rx) = tokio::sync::mpsc::channel(4);
+    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
 
     // dummy log write channel
     let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
@@ -82,10 +83,9 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     });
     handles.push(handle);
 
-    let mqtt_publish_clone = mqtt_publish_tx.clone();
     log::debug!("Start thread to connect all together");
     let handle = tokio::spawn(async move {
-        crate::auto::run(file_read_rx, log_write_tx, mqtt_publish_clone).await;
+        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx).await;
     });
     handles.push(handle);
 
@@ -98,16 +98,29 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     });
     handles.push(handle);
 
-    log::debug!("Start thread to subscribe to MQTT command topics");
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx): (
+        std::sync::mpsc::Sender<paho_mqtt::Message>,
+        std::sync::mpsc::Receiver<paho_mqtt::Message>,
+    ) = std::sync::mpsc::channel();
+
     let handle = tokio::spawn(async move {
-        crate::mqtt::subscribe::handle_incoming_messages(&mqtt_client, &devices)
-            .await
-            .unwrap();
+        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx).await;
     });
     handles.push(handle);
 
-    // Block on the file handles processing
-    for handle in handles {
-        handle.await.unwrap();
-    }
+    log::debug!("Start thread to subscribe to MQTT command topics");
+    let mqtt_subscribe_tx_clone = mqtt_subscribe_tx.clone();
+    let handle = tokio::spawn(async move {
+        crate::mqtt::subscribe::handle_incoming_messages(
+            &mqtt_client,
+            &devices,
+            mqtt_subscribe_tx_clone,
+        )
+        .await
+        .unwrap();
+    });
+    handles.push(handle);
+
+    // Block on the handles processing
+    futures::future::join_all(handles).await;
 }
