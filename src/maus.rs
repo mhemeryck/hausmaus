@@ -7,7 +7,7 @@ use std;
 
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
-    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
+    r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
 const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
 const MQTT_CLIENT_ID: &str = "hausmaus";
 const MQTT_KEEP_ALIVE: u64 = 20;
@@ -34,6 +34,15 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
     crate::sysfs::crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
     log::debug!("Finished crawling path {:?}", sysfs_path);
+
+    // Determine the sysfs path prefix from a single found path and the regex
+    let mut prefix: String = String::from("");
+    if let Some(path_str) = paths[0].to_str() {
+        if let Some(position) = re.find(path_str) {
+            prefix = path_str[..position.start()].to_string();
+        }
+    }
+    log::debug!("Prefix: {:?}", prefix);
 
     // turn into mut ref
     let device_name = device_name.to_string();
@@ -122,7 +131,6 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     });
     handles.push(handle);
 
-    let prefix = sysfs_path.to_string();
     let handle = tokio::spawn(async move {
         crate::sysfs::write::handle_file_command(prefix, file_write_rx).await;
     });
