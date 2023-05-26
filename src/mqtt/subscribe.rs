@@ -5,7 +5,7 @@ use paho_mqtt;
 pub async fn handle_incoming_messages(
     mqtt_client: &paho_mqtt::AsyncClient,
     devices: &std::vec::Vec<crate::device::Device>,
-    tx: std::sync::mpsc::Sender<paho_mqtt::Message>,
+    tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
 ) -> paho_mqtt::errors::Result<()> {
     // Receive channel
     let mqtt_rx: paho_mqtt::Receiver<Option<paho_mqtt::Message>> = mqtt_client.start_consuming();
@@ -20,13 +20,23 @@ pub async fn handle_incoming_messages(
     // handle message
     for msg in mqtt_rx {
         if let Some(msg) = msg {
-            log::debug!(
+            log::info!(
                 "Get msg {:?} for topic {:?} payload {:?}",
                 msg,
                 msg.topic(),
                 msg.payload_str()
             );
-            tx.send(msg).unwrap();
+            let device = crate::mqtt::device_from_topic(msg.topic()).unwrap();
+            let device = std::sync::Arc::new(device);
+
+            let toggle: bool;
+            if msg.payload_str().as_ref() == "ON" {
+                toggle = true;
+            } else {
+                toggle = false;
+            }
+
+            tx.send((device, toggle)).unwrap();
         }
     }
 

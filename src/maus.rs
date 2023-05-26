@@ -1,13 +1,13 @@
 use env_logger;
+use futures;
 use log;
 use paho_mqtt;
 use regex;
 use std;
-use futures;
 
 // Check whether we need all devices here or just the digital inputs
 const FILENAME_PATTERN: &str =
-    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/di_value$";
+    r"/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
 const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
 const MQTT_CLIENT_ID: &str = "hausmaus";
 const MQTT_KEEP_ALIVE: u64 = 20;
@@ -42,7 +42,7 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
 
     // create list of devices
     let mut devices: std::vec::Vec<crate::device::Device> = std::vec::Vec::new();
-    crate::sysfs::devices_from_paths(device_name.as_str(), &paths, &mut devices);
+    crate::sysfs::devices_from_paths(device_name.as_str(), &re, &paths, &mut devices);
 
     // file read channel
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
@@ -67,10 +67,12 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     let file_event_paths = paths.clone();
     let file_event_tx = file_read_tx.clone();
     let device_name_clone = device_name.clone();
+    let filename_pattern = FILENAME_PATTERN.to_string();
     let handle = tokio::spawn(async move {
         crate::sysfs::read::watch_input_file_events(
             file_event_paths,
             device_name_clone,
+            filename_pattern,
             file_event_tx,
         )
         .await;
@@ -98,17 +100,16 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     });
     handles.push(handle);
 
-    let (mqtt_subscribe_tx, mqtt_subscribe_rx): (
-        std::sync::mpsc::Sender<paho_mqtt::Message>,
-        std::sync::mpsc::Receiver<paho_mqtt::Message>,
-    ) = std::sync::mpsc::channel();
+    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
+
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
 
     let handle = tokio::spawn(async move {
-        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx).await;
+        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx).await;
     });
     handles.push(handle);
 
-    log::debug!("Start thread to subscribe to MQTT command topics");
+    log::debug!("Start thread to subscribe to  and handle MQTT command topics");
     let mqtt_subscribe_tx_clone = mqtt_subscribe_tx.clone();
     let handle = tokio::spawn(async move {
         crate::mqtt::subscribe::handle_incoming_messages(
@@ -118,6 +119,12 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
         )
         .await
         .unwrap();
+    });
+    handles.push(handle);
+
+    let prefix = sysfs_path.to_string();
+    let handle = tokio::spawn(async move {
+        crate::sysfs::write::handle_file_command(prefix, file_write_rx).await;
     });
     handles.push(handle);
 
