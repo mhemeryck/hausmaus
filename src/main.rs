@@ -8,7 +8,7 @@ use slug;
 #[command(version, about)]
 struct Cli {
     // Optional sysfs root path to start scanning for files
-    #[arg(long, value_name = "/run/unipi")]
+    #[arg(long)]
     sysfs: Option<String>,
 
     // Optional host name to pass in, used for root MQTT topic
@@ -33,7 +33,10 @@ fn device_name() -> Option<String> {
 fn main() {
     let cli = Cli::parse();
 
-    let sysfs_path: &str = cli.sysfs.as_deref().unwrap();
+    let sysfs_path = match cli.sysfs.as_deref() {
+        Some(sysfs_path) => sysfs_path,
+        None => "/run/unipi",
+    };
 
     let device_name: String = match cli.device_name.as_deref() {
         // from input arg
