@@ -9,7 +9,6 @@ use std;
 const FILENAME_PATTERN: &str =
     r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
 const MQTT_HOST: &str = "tcp://emqx.mhemeryck.com";
-const MQTT_CLIENT_ID: &str = "hausmaus";
 const MQTT_KEEP_ALIVE: u64 = 20;
 
 /// run is the main entry point to start the maus
@@ -19,7 +18,7 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
 #[tokio::main]
-pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
+pub async fn run(sysfs_path: &str, device_name: &str, mqtt_client_id: &str, debug: bool) {
     // log config
     let log_level = match debug {
         true => "debug",
@@ -59,7 +58,7 @@ pub async fn run(sysfs_path: &str, device_name: &str, debug: bool) {
     // MQTT setup
     let create_opts = paho_mqtt::CreateOptionsBuilder::new()
         .server_uri(MQTT_HOST)
-        .client_id(MQTT_CLIENT_ID.to_string())
+        .client_id(mqtt_client_id.to_string())
         .finalize();
     let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
         .keep_alive_interval(std::time::Duration::from_secs(MQTT_KEEP_ALIVE))

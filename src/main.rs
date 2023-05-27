@@ -17,6 +17,9 @@ struct Cli {
 
     #[arg(long)]
     debug: bool,
+
+    #[arg(long)]
+    mqtt_client_id: Option<String>,
 }
 
 // device name from hostname
@@ -49,5 +52,10 @@ fn main() {
 
     let debug = cli.debug;
 
-    hausmaus::maus::run(&sysfs_path, &device_name, debug);
+    let mqtt_client_id = match cli.mqtt_client_id.as_deref() {
+        Some(mqtt_client_id) => mqtt_client_id,
+        None => "hausmaus",
+    };
+
+    hausmaus::maus::run(&sysfs_path, &device_name, &mqtt_client_id, debug);
 }
