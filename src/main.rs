@@ -7,6 +7,9 @@ use slug;
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
+    #[arg(help = "MQTT broker host to connect to")]
+    mqtt_host: String,
+
     // Optional sysfs root path to start scanning for files
     #[arg(long)]
     sysfs: Option<String>,
@@ -15,9 +18,11 @@ struct Cli {
     #[arg(long)]
     device_name: Option<String>,
 
+    // Optional arg to show debug information
     #[arg(long)]
     debug: bool,
 
+    // Optional arg to set the MQTT client ID string. Defaults to `hausmaus`
     #[arg(long)]
     mqtt_client_id: Option<String>,
 }
@@ -35,6 +40,11 @@ fn device_name() -> Option<String> {
 
 fn main() {
     let cli = Cli::parse();
+
+    let mut mqtt_host = cli.mqtt_host;
+    if !mqtt_host.starts_with("tcp") {
+        mqtt_host = format!("tcp://{}", mqtt_host);
+    }
 
     let sysfs_path = match cli.sysfs.as_deref() {
         Some(sysfs_path) => sysfs_path,
@@ -57,5 +67,5 @@ fn main() {
         None => "hausmaus",
     };
 
-    hausmaus::maus::run(&sysfs_path, &device_name, &mqtt_client_id, debug);
+    hausmaus::maus::run(&mqtt_host, &sysfs_path, &device_name, &mqtt_client_id, debug);
 }
