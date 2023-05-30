@@ -6,8 +6,7 @@ use regex;
 use std;
 
 // Check whether we need all devices here or just the digital inputs
-const FILENAME_PATTERN: &str =
-    r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
+const FILENAME_PATTERN: &str = r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
 const MQTT_KEEP_ALIVE: u64 = 20;
 
 /// run is the main entry point to start the maus
@@ -17,7 +16,13 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
 #[tokio::main]
-pub async fn run(mqtt_host: &str, sysfs_path: &str, device_name: &str, mqtt_client_id: &str, debug: bool) {
+pub async fn run(
+    mqtt_host: &str,
+    sysfs_path: &str,
+    device_name: &str,
+    mqtt_client_id: &str,
+    debug: bool,
+) {
     // log config
     let log_level = match debug {
         true => "debug",

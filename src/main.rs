@@ -67,5 +67,11 @@ fn main() {
         None => "hausmaus",
     };
 
-    hausmaus::maus::run(&mqtt_host, &sysfs_path, &device_name, &mqtt_client_id, debug);
+    hausmaus::maus::run(
+        &mqtt_host,
+        &sysfs_path,
+        &device_name,
+        &mqtt_client_id,
+        debug,
+    );
 }
