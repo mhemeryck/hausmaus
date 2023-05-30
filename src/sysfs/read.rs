@@ -91,7 +91,5 @@ pub async fn watch_input_file_events(
     }
 
     // Block on the file handles processing
-    for handle in handles {
-        handle.await.unwrap();
-    }
+    futures::future::join_all(handles).await;
 }
