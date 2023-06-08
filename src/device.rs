@@ -14,6 +14,7 @@ pub struct Device {
     pub device_type: DeviceType,
     pub io_group: i32,
     pub number: i32,
+    pub path: String,
 }
 
 impl Device {
@@ -46,11 +47,13 @@ impl Device {
                         number_str.as_str().parse::<i32>(),
                     ) {
                         let module_name = module_name.to_string();
+                        let path = path_str.to_string();
                         return Ok(Self {
                             module_name,
                             device_type,
                             io_group,
                             number,
+                            path,
                         });
                     }
                 }
@@ -77,6 +80,7 @@ mod tests {
             assert_eq!(device.number, 7);
             assert_eq!(device.io_group, 2);
             assert_eq!(device.device_type, DeviceType::DigitalInput);
+            assert_eq!(device.path, path.to_string());
         } else {
             panic!("Could not find a device from path");
         }

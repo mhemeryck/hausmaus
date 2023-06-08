@@ -1,17 +1,17 @@
 /// sysfs contains the interface the file system based view on IO
-pub mod read;
-pub mod write;
+//pub mod read;
+//pub mod write;
 
 pub type FileEvent = (std::sync::Arc<Device>, bool, std::time::Duration);
 
-use crate::device::{Device, DeviceType};
+use crate::device::Device;
 use std;
 
 /// Crawls a directory structure for filenames matching given input
 pub fn crawl(
     dir: &std::path::Path,
-    filename_regex: &regex::Regex,
-    paths: &mut std::vec::Vec<std::path::PathBuf>,
+    module_name: &str,
+    devices: &mut std::vec::Vec<crate::device::Device>,
 ) -> std::io::Result<()> {
     if dir.is_dir() {
         log::debug!("Checking dir {:?}", dir);
@@ -26,75 +26,17 @@ pub fn crawl(
 
             // dirs need to be crawled further
             if path.is_dir() {
-                crawl(&path, filename_regex, paths)?;
+                crawl(&path, module_name, devices)?;
             } else {
-                match path.to_str() {
-                    Some(path_str) => {
-                        if filename_regex.is_match(path_str) {
-                            paths.push(path);
-                        }
+                if let Some(path_str) = path.to_str() {
+                    if let Ok(device) = Device::from_path(path_str, module_name) {
+                        devices.push(device);
                     }
-                    None => {}
                 }
             }
         }
     }
     Ok(())
-}
-
-/// Create a device from a path string
-fn device_from_path(
-    name_str: &str,
-    filename_pattern: &regex::Regex,
-    path_str: &str,
-) -> Option<Device> {
-    if let Some(captures) = filename_pattern.captures(path_str) {
-        if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
-            captures.name("device_fmt"),
-            captures.name("io_group"),
-            captures.name("number"),
-        ) {
-            // Map against device type from capture
-            let device_type = match device_fmt.as_str() {
-                "di" => DeviceType::DigitalInput,
-                "do" => DeviceType::DigitalOutput,
-                "ro" => DeviceType::RelayOutput,
-                _ => return None,
-            };
-
-            // Parse and cast from capture
-            if let (Ok(io_group), Ok(number)) = (
-                io_group_str.as_str().parse::<i32>(),
-                number_str.as_str().parse::<i32>(),
-            ) {
-                let module_name = name_str.to_string();
-                return Some(Device {
-                    module_name,
-                    device_type,
-                    io_group,
-                    number,
-                });
-            }
-        }
-    }
-    // In all other cases, nothing was found
-    None
-}
-
-/// Build a list of devices from a list paths
-pub fn devices_from_paths(
-    name_str: &str,
-    filename_pattern: &regex::Regex,
-    paths: &std::vec::Vec<std::path::PathBuf>,
-    devices: &mut std::vec::Vec<crate::device::Device>,
-) {
-    for path in paths {
-        if let Some(path_str) = path.to_str() {
-            if let Some(device) = device_from_path(&name_str, &filename_pattern, path_str) {
-                devices.push(device);
-            }
-        }
-    }
 }
 
 #[cfg(test)]
