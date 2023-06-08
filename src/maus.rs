@@ -80,6 +80,7 @@ pub async fn run(
     let file_event_tx = file_read_tx.clone();
     let device_name_clone = device_name.clone();
     let filename_pattern = FILENAME_PATTERN.to_string();
+
     let handle = tokio::spawn(async move {
         crate::sysfs::read::watch_input_file_events(
             file_event_paths,

@@ -13,7 +13,7 @@ const TOPIC_PATTERN: &str =
 pub fn device_from_topic(topic: &str) -> Option<crate::device::Device> {
     let re = regex::Regex::new(TOPIC_PATTERN).unwrap();
     if let Some(captures) = re.captures(topic) {
-        if let (Some(name_str), Some(device_fmt), Some(io_group_str), Some(number_str)) = (
+        if let (Some(module_name_str), Some(device_fmt), Some(io_group_str), Some(number_str)) = (
             captures.name("name"),
             captures.name("type"),
             captures.name("io_group"),
@@ -31,9 +31,9 @@ pub fn device_from_topic(topic: &str) -> Option<crate::device::Device> {
                 io_group_str.as_str().parse::<i32>(),
                 number_str.as_str().parse::<i32>(),
             ) {
-                let name = name_str.as_str().to_string();
+                let module_name = module_name_str.as_str().to_string();
                 return Some(crate::device::Device {
-                    name,
+                    module_name,
                     device_type,
                     io_group,
                     number,
@@ -51,7 +51,7 @@ mod tests {
     fn test_device_from_topic() {
         let topic = "foo/output/3_07/set";
         if let Some(device) = device_from_topic(&topic) {
-            assert_eq!(device.name, "foo");
+            assert_eq!(device.module_name, "foo");
             assert_eq!(device.number, 7);
             assert_eq!(device.io_group, 3);
             assert_eq!(device.device_type, crate::device::DeviceType::DigitalOutput);

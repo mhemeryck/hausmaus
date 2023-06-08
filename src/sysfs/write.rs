@@ -47,7 +47,7 @@ mod tests {
     fn test_path_for_device() {
         let prefix = "/sys/devices/platform/unipi_plc";
         let device = crate::device::Device {
-            name: String::from("foo"),
+            module_name: String::from("foo"),
             number: 7,
             io_group: 2,
             device_type: crate::device::DeviceType::DigitalOutput,

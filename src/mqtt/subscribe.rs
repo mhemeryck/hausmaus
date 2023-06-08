@@ -62,7 +62,7 @@ async fn command_topics_for_devices(
 fn command_topic_for_device(device: &crate::device::Device) -> String {
     format!(
         "{name}/{device_type}/{io_group:1}_{number:02}/set",
-        name = device.name,
+        name = device.module_name,
         device_type = match device.device_type {
             crate::device::DeviceType::DigitalInput => "input",
             crate::device::DeviceType::DigitalOutput => "output",
@@ -80,7 +80,7 @@ mod tests {
     #[test]
     fn test_command_topic_for_device() {
         let device = crate::device::Device {
-            name: String::from("foo"),
+            module_name: String::from("foo"),
             device_type: crate::device::DeviceType::DigitalOutput,
             io_group: 1,
             number: 3,

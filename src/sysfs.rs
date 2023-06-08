@@ -67,9 +67,9 @@ fn device_from_path(
                 io_group_str.as_str().parse::<i32>(),
                 number_str.as_str().parse::<i32>(),
             ) {
-                let name = name_str.to_string();
+                let module_name = name_str.to_string();
                 return Some(Device {
-                    name,
+                    module_name,
                     device_type,
                     io_group,
                     number,
@@ -148,11 +148,11 @@ mod tests {
 
     #[test]
     fn test_device_from_path() {
-        let name = "foo";
+        let module_name = "foo";
         let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
         let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
-        if let Some(device) = device_from_path(&name, &re, &path) {
-            assert_eq!(device.name, "foo");
+        if let Some(device) = device_from_path(&module_name, &re, &path) {
+            assert_eq!(device.module_name, "foo");
             assert_eq!(device.number, 7);
             assert_eq!(device.io_group, 2);
             assert_eq!(device.device_type, DeviceType::DigitalInput);
@@ -163,10 +163,10 @@ mod tests {
 
     #[test]
     fn test_device_from_path_not_found() {
-        let name = "foo";
+        let module_name = "foo";
         let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
         let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
-        if let Some(_) = device_from_path(&name, &re, &path) {
+        if let Some(_) = device_from_path(&module_name, &re, &path) {
             panic!("It shouldn't find a device in this case!");
         }
     }
