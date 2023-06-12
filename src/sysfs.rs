@@ -29,7 +29,9 @@ pub fn crawl(
                 crawl(&path, module_name, devices)?;
             } else {
                 if let Some(path_str) = path.to_str() {
-                    if let Ok(device) = Device::from_path(path_str, module_name) {
+                    // The id we use here is just the current length of the list
+                    let id: u8 = devices.len().try_into().unwrap();
+                    if let Ok(device) = Device::from_path(id, path_str, module_name) {
                         devices.push(device);
                     }
                 }

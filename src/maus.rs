@@ -34,14 +34,19 @@ pub async fn run(
     // Crawl a folder for paths to watch based on a regex
     log::debug!("Start crawling path {:?}", sysfs_path);
     let mut devices: std::vec::Vec<crate::device::Device> = std::vec::Vec::new();
-    crate::sysfs::crawl(&std::path::Path::new(&sysfs_path), device_name, &mut devices).unwrap();
-    log::debug!("Finished crawling path {:?}", sysfs_path);
+    crate::sysfs::crawl(
+        &std::path::Path::new(&sysfs_path),
+        device_name,
+        &mut devices,
+    )
+    .unwrap();
+    log::info!("Finished crawling path {:?}", sysfs_path);
 
     for device in &devices {
-        log::debug!("Found device {:?}", device.path);
+        log::info!("Found device with id {} {:?}", device.id, device.path);
     }
 
-    log::debug!("Number of devices: {}", devices.len());
+    log::info!("Number of devices: {}", devices.len());
     // Determine the sysfs path prefix from a single found path and the regex
 
     // turn into mut ref

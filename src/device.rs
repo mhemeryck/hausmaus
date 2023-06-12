@@ -1,3 +1,4 @@
+use lazy_static;
 use regex;
 
 #[derive(Eq, PartialEq, Debug)]
@@ -9,6 +10,8 @@ pub enum DeviceType {
 
 #[derive(Eq, PartialEq, Debug)]
 pub struct Device {
+    // Simple number identifying the device
+    pub id: u8,
     // Name of the module the device is linked to
     pub module_name: String,
     pub device_type: DeviceType,
@@ -17,45 +20,51 @@ pub struct Device {
     pub path: String,
 }
 
+// use a lazy static to ensure we only compile the regex once
+lazy_static::lazy_static! {
+    static ref FILENAME_PATTERN: regex::Regex = regex::Regex::new(r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$").unwrap();
+}
+
 impl Device {
-    const FILENAME_PATTERN: &str = r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
-
     // Construct a device from a path as a string
-    pub fn from_path(path_str: &str, module_name: &str) -> Result<Self, crate::errors::MausError> {
-        if let Ok(re) = regex::Regex::new(Self::FILENAME_PATTERN) {
-            if let Some(captures) = re.captures(path_str) {
-                if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
-                    captures.name("device_fmt"),
-                    captures.name("io_group"),
-                    captures.name("number"),
-                ) {
-                    // Map against device type from capture
-                    let device_type = match device_fmt.as_str() {
-                        "di" => DeviceType::DigitalInput,
-                        "do" => DeviceType::DigitalOutput,
-                        "ro" => DeviceType::RelayOutput,
-                        _ => {
-                            return Err(crate::errors::MausError::new(
-                                "Could not determine device type from path".to_string(),
-                            ))
-                        }
-                    };
-
-                    // Parse and cast from capture
-                    if let (Ok(io_group), Ok(number)) = (
-                        io_group_str.as_str().parse::<i32>(),
-                        number_str.as_str().parse::<i32>(),
-                    ) {
-                        let module_name = module_name.to_string();
-                        let path = path_str.to_string();
-                        return Ok(Self {
-                            module_name,
-                            device_type,
-                            io_group,
-                            number,
-                            path,
-                        });
+    pub fn from_path(
+        id: u8,
+        path_str: &str,
+        module_name: &str,
+    ) -> Result<Self, crate::errors::MausError> {
+        if let Some(captures) = FILENAME_PATTERN.captures(path_str) {
+            if let (Some(device_fmt), Some(io_group_str), Some(number_str)) = (
+                captures.name("device_fmt"),
+                captures.name("io_group"),
+                captures.name("number"),
+            ) {
+                // Map against device type from capture
+                let device_type = match device_fmt.as_str() {
+                    "di" => DeviceType::DigitalInput,
+                    "do" => DeviceType::DigitalOutput,
+                    "ro" => DeviceType::RelayOutput,
+                    _ => {
+                        return Err(crate::errors::MausError::new(
+                            "Could not determine device type from path".to_string(),
+                        ))
                     }
+                };
+
+                // Parse and cast from capture
+                if let (Ok(io_group), Ok(number)) = (
+                    io_group_str.as_str().parse::<i32>(),
+                    number_str.as_str().parse::<i32>(),
+                ) {
+                    let module_name = module_name.to_string();
+                    let path = path_str.to_string();
+                    return Ok(Self {
+                        id,
+                        module_name,
+                        device_type,
+                        io_group,
+                        number,
+                        path,
+                    });
                 }
             }
         }
