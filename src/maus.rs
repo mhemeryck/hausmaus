@@ -51,12 +51,12 @@ pub async fn run(
 
     // turn into mut ref
 
-    //let mut handles = std::vec::Vec::new();
+    let mut handles = std::vec::Vec::new();
 
     // create list of devices
 
-    //// file read channel
-    //let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
+    // file read channel
+    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
 
     //// MQTT setup
     //let create_opts = paho_mqtt::CreateOptionsBuilder::new()
@@ -74,22 +74,20 @@ pub async fn run(
     //// dummy log write channel
     //let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
 
-    //log::debug!("Start main file event watcher thread");
+    log::debug!("Start main file event watcher thread");
     //let file_event_paths = paths.clone();
-    //let file_event_tx = file_read_tx.clone();
+    let file_event_tx = file_read_tx.clone();
     //let device_name_clone = device_name.clone();
     //let filename_pattern = FILENAME_PATTERN.to_string();
 
-    //let handle = tokio::spawn(async move {
-    //    crate::sysfs::read::watch_input_file_events(
-    //        file_event_paths,
-    //        device_name_clone,
-    //        filename_pattern,
-    //        file_event_tx,
-    //    )
-    //    .await;
-    //});
-    //handles.push(handle);
+    let handle = tokio::spawn(async move {
+        crate::sysfs::read::watch_input_file_events(
+            devices.clone(),
+            file_event_tx,
+        )
+        .await;
+    });
+    handles.push(handle);
 
     //log::debug!("Start thread to write to events");
     //let handle = tokio::spawn(async move {
@@ -139,6 +137,6 @@ pub async fn run(
     //});
     //handles.push(handle);
 
-    //// Block on the handles processing
-    //futures::future::join_all(handles).await;
+    // Block on the handles processing
+    futures::future::join_all(handles).await;
 }

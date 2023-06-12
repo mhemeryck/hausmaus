@@ -1,14 +1,14 @@
 use lazy_static;
 use regex;
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub enum DeviceType {
     DigitalInput,
     DigitalOutput,
     RelayOutput,
 }
 
-#[derive(Eq, PartialEq, Debug)]
+#[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Device {
     // Simple number identifying the device
     pub id: u8,

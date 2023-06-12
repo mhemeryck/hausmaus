@@ -2,7 +2,6 @@ use log;
 use std;
 use std::io::{Read, Seek};
 
-use crate::sysfs;
 use crate::sysfs::FileEvent;
 use tokio;
 
@@ -10,23 +9,16 @@ const POLL_INTERVAL: u64 = 200;
 
 /// Wait for toggle on a specific path
 fn wait_for_toggle(
-    path: String,
-    device_name: String,
-    filename_pattern: String,
+    device: crate::device::Device,
     tx: std::sync::mpsc::Sender<FileEvent>,
 ) -> std::io::Result<()> {
-    log::debug!("Start monitoring path {:?}", path);
-    let file = std::fs::File::open(&path)?;
+    log::debug!("Start monitoring path {:?}", device.path);
+    let file = std::fs::File::open(&device.path)?;
     let mut reader = std::io::BufReader::new(file);
     let mut first_char = [0; 1];
 
     let mut last_value: Option<bool> = None;
     let mut last_toggle_time: Option<std::time::Instant> = None;
-
-    let re = regex::Regex::new(&filename_pattern).unwrap();
-
-    let device = sysfs::device_from_path(&device_name.as_str(), &re, &path).unwrap();
-    let device = std::sync::Arc::new(device);
 
     loop {
         // Go back to first line and read it again
@@ -48,13 +40,13 @@ fn wait_for_toggle(
                     .map(|t| t.elapsed())
                     .unwrap_or_else(|| std::time::Duration::from_secs(0));
                 log::debug!(
-                    "Toggled for path {:?} ! {:?} / {:?}",
-                    path,
+                    "Toggled for device #{} path {:?} ! {:?} / {:?}",
+                    device.id,
+                    device.path,
                     value,
                     toggle_time
                 );
-                let device_clone = std::sync::Arc::clone(&device);
-                tx.send((device_clone, value, toggle_time)).unwrap();
+                tx.send((device.id, value, toggle_time)).unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {
@@ -69,25 +61,17 @@ fn wait_for_toggle(
 
 /// watch_input file events is the main block responsible for watching SysFS file events
 pub async fn watch_input_file_events(
-    paths: std::vec::Vec<std::path::PathBuf>,
-    device_name: String,
-    filename_pattern: String,
+    devices: std::vec::Vec<crate::device::Device>,
     tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
-    let mut handles = std::vec::Vec::with_capacity(paths.len());
-    for path in paths {
-        log::debug!("Found path: {:?}", path);
-        if let Some(path_str) = path.to_str() {
-            let path_str = path_str.to_string();
-            let path_tx = tx.clone();
-            let device_name_clone = device_name.clone();
-            let filename_pattern_clone = filename_pattern.clone();
-            let handle = tokio::task::spawn_blocking(move || {
-                wait_for_toggle(path_str, device_name_clone, filename_pattern_clone, path_tx)
-                    .unwrap();
-            });
-            handles.push(handle);
-        }
+    let mut handles = std::vec::Vec::with_capacity(devices.len());
+    for device in devices {
+        let path_tx = tx.clone();
+        let handle = tokio::task::spawn_blocking(move || {
+            wait_for_toggle(device, path_tx)
+                .unwrap();
+        });
+        handles.push(handle);
     }
 
     // Block on the file handles processing
