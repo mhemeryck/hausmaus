@@ -39,16 +39,19 @@ pub async fn run(
     }
     log::debug!("Number of devices: {}", devices.len());
 
-    log::debug!("Build list of state topics for devices");
+    log::debug!("Build mapping of state topics for devices");
     let mut state_topic_map: std::collections::HashMap<u8, String> =
         std::collections::HashMap::new();
     crate::device::device_state_topics(&devices, &mut state_topic_map);
 
-    log::debug!("Build list of command topics for devices");
+    log::debug!("Build mapping of command topics for devices");
     let mut command_topic_map: std::collections::HashMap<String, u8> =
         std::collections::HashMap::new();
     crate::device::device_command_topics(&devices, &mut command_topic_map);
 
+    log::debug!("Build mapping of paths for devices");
+    let mut path_map: std::collections::HashMap<u8, String> = std::collections::HashMap::new();
+    crate::device::device_paths(&devices, &mut path_map);
 
     // MQTT setup
     let create_opts = paho_mqtt::CreateOptionsBuilder::new()
@@ -66,7 +69,8 @@ pub async fn run(
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
     let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
     let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
-    let (mqtt_subscribe_tx, _mqtt_subscribe_rx) = std::sync::mpsc::channel();
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
+    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
 
     let mut handles = std::vec::Vec::new();
 
@@ -92,23 +96,17 @@ pub async fn run(
     log::debug!("Start thread to connect to handle MQTT publishing");
     let c = mqtt_client.clone();
     let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(
-            mqtt_publish_rx,
-            &c,
-            &state_topic_map,
-        )
-        .await
-        .unwrap();
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &c, &state_topic_map)
+            .await
+            .unwrap();
     });
     handles.push(handle);
 
-    //let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
-
-
-    //let handle = tokio::spawn(async move {
-    //    crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx).await;
-    //});
-    //handles.push(handle);
+    log::debug!("Start thread to connect MQTT subscribe -> sys write");
+    let handle = tokio::spawn(async move {
+        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx).await;
+    });
+    handles.push(handle);
 
     log::debug!("Start thread to subscribe to and handle MQTT command topics");
     let handle = tokio::spawn(async move {
@@ -122,10 +120,11 @@ pub async fn run(
     });
     handles.push(handle);
 
-    //let handle = tokio::spawn(async move {
-    //    crate::sysfs::write::handle_file_command(prefix, file_write_rx).await;
-    //});
-    //handles.push(handle);
+    log::debug!("Start thread to subscribe to and handle MQTT command topics");
+    let handle = tokio::spawn(async move {
+        crate::sysfs::write::handle_file_command(file_write_rx, &path_map).await;
+    });
+    handles.push(handle);
 
     // Block on the handles processing
     futures::future::join_all(handles).await;

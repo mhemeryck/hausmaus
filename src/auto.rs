@@ -18,12 +18,12 @@ pub async fn run_sysfs_to_mqtt(
     }
 }
 
-//pub async fn run_mqtt_to_sysfs(
-//    mqtt_subscribe_rx: std::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
-//    file_write_tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
-//) {
-//    for msg in mqtt_subscribe_rx {
-//        log::debug!("Message received {:?}", msg);
-//        file_write_tx.send(msg).unwrap();
-//    }
-//}
+pub async fn run_mqtt_to_sysfs(
+    mqtt_subscribe_rx: std::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
+    file_write_tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+) {
+    for msg in mqtt_subscribe_rx {
+        log::debug!("Message received {:?}", msg);
+        file_write_tx.send(msg).unwrap();
+    }
+}

@@ -25,7 +25,7 @@ pub async fn handle_incoming_messages(
                 msg.topic(),
                 msg.payload_str()
             );
-            
+
             let toggle: bool;
             if msg.payload_str().as_ref() == "ON" {
                 toggle = true;
@@ -37,7 +37,6 @@ pub async fn handle_incoming_messages(
                 log::debug!("Received message for device #{}", device_id);
                 tx.send((device_id, toggle)).unwrap();
             }
-
         }
     }
 

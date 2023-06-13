@@ -152,6 +152,7 @@ fn command_topic_for_device(device: &crate::device::Device) -> String {
     )
 }
 
+/// Set up mapping device -> state topic
 pub fn device_state_topics(
     devices: &std::vec::Vec<Device>,
     cache: &mut std::collections::HashMap<u8, String>,
@@ -161,12 +162,23 @@ pub fn device_state_topics(
     }
 }
 
+/// Mapping command topic -> device ID
 pub fn device_command_topics(
     devices: &std::vec::Vec<Device>,
     cache: &mut std::collections::HashMap<String, u8>,
 ) {
     for device in devices {
         cache.insert(command_topic_for_device(&device), device.id);
+    }
+}
+
+/// Mapping device ID -> path
+pub fn device_paths(
+    devices: &std::vec::Vec<Device>,
+    cache: &mut std::collections::HashMap<u8, String>,
+) {
+    for device in devices {
+        cache.insert(device.id, device.path.to_string());
     }
 }
 
