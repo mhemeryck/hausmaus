@@ -1,6 +1,7 @@
 /// publish module accepts all incoming events and publishes them to MQTT
 use log;
 use paho_mqtt;
+use std;
 
 use crate::sysfs::FileEvent;
 
@@ -8,51 +9,23 @@ use crate::sysfs::FileEvent;
 pub async fn publish_messages(
     rx: std::sync::mpsc::Receiver<FileEvent>,
     mqtt_client: &paho_mqtt::AsyncClient,
+    state_topic_map: &std::collections::HashMap<u8, String>,
 ) -> paho_mqtt::errors::Result<()> {
-    for (device, state, duration) in rx {
-        log::debug!("changed: {:?}, {:?}, {:?}", device, state, duration);
+    for (device_id, state, duration) in rx {
+        log::debug!(
+            "publishing message for device #{}: {:?}, {:?}",
+            device_id,
+            state,
+            duration
+        );
         let message_str = match state {
             true => "ON",
             false => "OFF",
         };
-        let message = paho_mqtt::Message::new(
-            state_topic_for_device(&device),
-            message_str.as_bytes(),
-            paho_mqtt::QOS_2,
-        );
-        mqtt_client.publish(message).await?;
+        if let Some(topic) = state_topic_map.get(&device_id) {
+            let message = paho_mqtt::Message::new(topic, message_str.as_bytes(), paho_mqtt::QOS_2);
+            mqtt_client.publish(message).await?;
+        }
     }
     Ok(())
-}
-
-/// generate a state topic to publish to for a given device
-fn state_topic_for_device(device: &crate::device::Device) -> String {
-    format!(
-        "{name}/{device_type}/{io_group:1}_{number:02}/state",
-        name = device.module_name,
-        device_type = match device.device_type {
-            crate::device::DeviceType::DigitalInput => "input",
-            crate::device::DeviceType::DigitalOutput => "output",
-            crate::device::DeviceType::RelayOutput => "relay",
-        },
-        io_group = device.io_group,
-        number = device.number
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_state_topic_for_device() {
-        let device = crate::device::Device {
-            module_name: String::from("foo"),
-            device_type: crate::device::DeviceType::DigitalOutput,
-            io_group: 1,
-            number: 3,
-        };
-
-        assert_eq!(state_topic_for_device(&device), "foo/output/1_03/state");
-    }
 }

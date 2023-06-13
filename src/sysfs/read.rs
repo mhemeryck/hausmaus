@@ -68,8 +68,7 @@ pub async fn watch_input_file_events(
     for device in devices {
         let path_tx = tx.clone();
         let handle = tokio::task::spawn_blocking(move || {
-            wait_for_toggle(device, path_tx)
-                .unwrap();
+            wait_for_toggle(device, path_tx).unwrap();
         });
         handles.push(handle);
     }

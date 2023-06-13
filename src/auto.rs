@@ -2,7 +2,7 @@
 use crate::sysfs::FileEvent;
 use std;
 
-/// run is the main function bringing all channels together
+/// Connect channels from sysfs read -> mqtt publish
 pub async fn run_sysfs_to_mqtt(
     file_read_rx: std::sync::mpsc::Receiver<FileEvent>,
     log_write_tx: std::sync::mpsc::Sender<FileEvent>,
@@ -10,21 +10,20 @@ pub async fn run_sysfs_to_mqtt(
 ) {
     // Simple pass-through, for now
     for event in file_read_rx {
-        // quick clone such that we can also send it to mqtt
-        let event_clone = event.clone();
+        // Connect to log write
         log_write_tx.send(event).unwrap();
-        // pass to mqtt tokio publisher; requires to be run in its own task
-        let mqtt_tx_clone = mqtt_publish_tx.clone();
-        mqtt_tx_clone.send(event_clone).unwrap();
+
+        // Connect to MQTT publish
+        mqtt_publish_tx.send(event).unwrap();
     }
 }
 
-pub async fn run_mqtt_to_sysfs(
-    mqtt_subscribe_rx: std::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
-    file_write_tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
-) {
-    for msg in mqtt_subscribe_rx {
-        log::debug!("Message received {:?}", msg);
-        file_write_tx.send(msg).unwrap();
-    }
-}
+//pub async fn run_mqtt_to_sysfs(
+//    mqtt_subscribe_rx: std::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
+//    file_write_tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+//) {
+//    for msg in mqtt_subscribe_rx {
+//        log::debug!("Message received {:?}", msg);
+//        file_write_tx.send(msg).unwrap();
+//    }
+//}
