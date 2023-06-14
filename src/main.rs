@@ -41,11 +41,6 @@ fn device_name() -> Option<String> {
 fn main() {
     let cli = Cli::parse();
 
-    let mut mqtt_host = cli.mqtt_host;
-    if !mqtt_host.starts_with("tcp") {
-        mqtt_host = format!("tcp://{}", mqtt_host);
-    }
-
     let sysfs_path = match cli.sysfs.as_deref() {
         Some(sysfs_path) => sysfs_path,
         None => "/run/unipi",
@@ -68,7 +63,7 @@ fn main() {
     };
 
     hausmaus::maus::run(
-        &mqtt_host,
+        &cli.mqtt_host,
         &sysfs_path,
         &device_name,
         &mqtt_client_id,

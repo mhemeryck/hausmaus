@@ -1,50 +1,52 @@
+use rumqttc;
 /// subscribe module accepts incoming MQTT messages and forwards it back to the rest
-use paho_mqtt;
+use std;
+
+/// Subscribe to the topics as available in the topics from the command topic map
+pub async fn subscribe_topics(
+    mqtt_client: &rumqttc::AsyncClient,
+    command_topic_map: &std::collections::HashMap<String, u8>,
+) {
+    // COnvert to vector of (topic, QoS)
+    let mut topic_qos: std::vec::Vec<rumqttc::SubscribeFilter> = std::vec::Vec::new();
+    for topic in command_topic_map.keys() {
+        topic_qos.push(rumqttc::SubscribeFilter {
+            path: topic.clone(),
+            qos: rumqttc::QoS::AtLeastOnce,
+        });
+    }
+
+    mqtt_client.subscribe_many(topic_qos).await.unwrap();
+}
 
 /// handle incoming messages
 pub async fn handle_incoming_messages(
-    tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
-    mqtt_client: &paho_mqtt::AsyncClient,
-    command_topic_map: &std::collections::HashMap<String, u8>,
-) -> paho_mqtt::errors::Result<()> {
-    // Receive channel
-    let mqtt_rx: paho_mqtt::Receiver<Option<paho_mqtt::Message>> = mqtt_client.start_consuming();
-
-    // Subscribe to command topics for devices
-    let topics: std::vec::Vec<String> = command_topic_map.keys().cloned().collect();
-    mqtt_client
-        .subscribe_many(&topics, &std::vec![paho_mqtt::QOS_2; topics.len()])
-        .await?;
-
+    _tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+    mqtt_loop: &mut rumqttc::EventLoop,
+) {
     // handle message
-    for msg in mqtt_rx {
-        if let Some(msg) = msg {
-            log::info!(
-                "Get msg {:?} for topic {:?} payload {:?}",
-                msg,
-                msg.topic(),
-                msg.payload_str()
-            );
+    loop {
+        let event = mqtt_loop.poll().await.unwrap();
+        log::debug!("Received incoming event {:?}", event);
+        //if let Some(msg) = msg {
+        //    log::info!(
+        //        "Get msg {:?} for topic {:?} payload {:?}",
+        //        msg,
+        //        msg.topic(),
+        //        msg.payload_str()
+        //    );
 
-            let toggle: bool;
-            if msg.payload_str().as_ref() == "ON" {
-                toggle = true;
-            } else {
-                toggle = false;
-            }
+        //    let toggle: bool;
+        //    if msg.payload_str().as_ref() == "ON" {
+        //        toggle = true;
+        //    } else {
+        //        toggle = false;
+        //    }
 
-            if let Some(&device_id) = command_topic_map.get(msg.topic()) {
-                log::debug!("Received message for device #{}", device_id);
-                tx.send((device_id, toggle)).unwrap();
-            }
-        }
+        //    if let Some(&device_id) = command_topic_map.get(msg.topic()) {
+        //        log::debug!("Received message for device #{}", device_id);
+        //        tx.send((device_id, toggle)).unwrap();
+        //    }
+        //}
     }
-
-    // cleanup in case we'd quit
-    if mqtt_client.is_connected() {
-        mqtt_client.unsubscribe_many(&topics).await?;
-        mqtt_client.disconnect(None).await?;
-    }
-
-    Ok(())
 }

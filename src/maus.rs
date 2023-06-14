@@ -1,10 +1,11 @@
 use env_logger;
 use futures;
 use log;
-use paho_mqtt;
+use rumqttc;
 use std;
 
 const MQTT_KEEP_ALIVE: u64 = 20;
+const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
 
 /// run is the main entry point to start the maus
 ///
@@ -54,16 +55,15 @@ pub async fn run(
     crate::device::device_paths(&devices, &mut path_map);
 
     // MQTT setup
-    let create_opts = paho_mqtt::CreateOptionsBuilder::new()
-        .server_uri(mqtt_host)
-        .client_id(mqtt_client_id.to_string())
-        .finalize();
-    let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
-        .keep_alive_interval(std::time::Duration::from_secs(MQTT_KEEP_ALIVE))
-        .clean_session(true)
-        .finalize();
-    let mqtt_client = std::sync::Arc::new(paho_mqtt::AsyncClient::new(create_opts).unwrap());
-    mqtt_client.connect(conn_opts).await.unwrap();
+    let mut mqtt_options = rumqttc::MqttOptions::new(mqtt_client_id, mqtt_host, 1883);
+    mqtt_options.set_keep_alive(std::time::Duration::from_secs(MQTT_KEEP_ALIVE));
+
+    let (mqtt_client, mut mqtt_loop) =
+        rumqttc::AsyncClient::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
+    let mqtt_client = std::sync::Arc::new(mqtt_client);
+
+    // Subscribe
+    crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map).await;
 
     // Channels
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
@@ -96,9 +96,7 @@ pub async fn run(
     log::debug!("Start thread to connect to handle MQTT publishing");
     let c = mqtt_client.clone();
     let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &c, &state_topic_map)
-            .await
-            .unwrap();
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &c, &state_topic_map).await
     });
     handles.push(handle);
 
@@ -110,13 +108,7 @@ pub async fn run(
 
     log::debug!("Start thread to subscribe to and handle MQTT command topics");
     let handle = tokio::spawn(async move {
-        crate::mqtt::subscribe::handle_incoming_messages(
-            mqtt_subscribe_tx,
-            &mqtt_client,
-            &command_topic_map,
-        )
-        .await
-        .unwrap();
+        crate::mqtt::subscribe::handle_incoming_messages(mqtt_subscribe_tx, &mut mqtt_loop).await
     });
     handles.push(handle);
 
