@@ -60,7 +60,7 @@ pub async fn run(
 
     let (mqtt_client, mut mqtt_loop) =
         rumqttc::AsyncClient::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
-    let mqtt_client = std::sync::Arc::new(mqtt_client);
+    //let mqtt_client = std::sync::Arc::new(mqtt_client);
 
     // Subscribe
     crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map).await;
@@ -94,9 +94,8 @@ pub async fn run(
     handles.push(handle);
 
     log::debug!("Start thread to connect to handle MQTT publishing");
-    let c = mqtt_client.clone();
     let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &c, &state_topic_map).await
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, mqtt_client, &state_topic_map).await
     });
     handles.push(handle);
 
@@ -108,7 +107,12 @@ pub async fn run(
 
     log::debug!("Start thread to subscribe to and handle MQTT command topics");
     let handle = tokio::spawn(async move {
-        crate::mqtt::subscribe::handle_incoming_messages(mqtt_subscribe_tx, &mut mqtt_loop).await
+        crate::mqtt::subscribe::handle_incoming_messages(
+            mqtt_subscribe_tx,
+            &mut mqtt_loop,
+            &command_topic_map,
+        )
+        .await
     });
     handles.push(handle);
 

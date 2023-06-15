@@ -1,5 +1,5 @@
-use rumqttc;
 /// subscribe module accepts incoming MQTT messages and forwards it back to the rest
+use rumqttc;
 use std;
 
 /// Subscribe to the topics as available in the topics from the command topic map
@@ -23,30 +23,26 @@ pub async fn subscribe_topics(
 pub async fn handle_incoming_messages(
     _tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
     mqtt_loop: &mut rumqttc::EventLoop,
+    command_topic_map: &std::collections::HashMap<String, u8>,
 ) {
     // handle message
     loop {
         let event = mqtt_loop.poll().await.unwrap();
         log::debug!("Received incoming event {:?}", event);
-        //if let Some(msg) = msg {
-        //    log::info!(
-        //        "Get msg {:?} for topic {:?} payload {:?}",
-        //        msg,
-        //        msg.topic(),
-        //        msg.payload_str()
-        //    );
+        if let rumqttc::Event::Incoming(rumqttc::Packet::Publish(msg)) = event {
+            log::debug!("Incoming event {:?} {:?}", msg.topic, msg.payload);
 
-        //    let toggle: bool;
-        //    if msg.payload_str().as_ref() == "ON" {
-        //        toggle = true;
-        //    } else {
-        //        toggle = false;
-        //    }
+            let toggle: bool;
+            if String::from_utf8_lossy(&msg.payload) == "ON" {
+                toggle = true;
+            } else {
+                toggle = false;
+            }
 
-        //    if let Some(&device_id) = command_topic_map.get(msg.topic()) {
-        //        log::debug!("Received message for device #{}", device_id);
-        //        tx.send((device_id, toggle)).unwrap();
-        //    }
-        //}
+            if let Some(&device_id) = command_topic_map.get(&msg.topic) {
+                log::debug!("Received message for device #{}", device_id);
+                //tx.send((device_id, toggle)).unwrap();
+            }
+        }
     }
 }

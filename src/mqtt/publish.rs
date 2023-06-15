@@ -8,11 +8,11 @@ use crate::sysfs::FileEvent;
 /// handle_messages receives any file events and sends them out over MQTT
 pub async fn publish_messages(
     rx: std::sync::mpsc::Receiver<FileEvent>,
-    mqtt_client: &rumqttc::AsyncClient,
+    mqtt_client: rumqttc::AsyncClient,
     state_topic_map: &std::collections::HashMap<u8, String>,
 ) {
     for (device_id, state, duration) in rx {
-        let message_str = match state {
+        let message_str: &str = match state {
             true => "ON",
             false => "OFF",
         };
@@ -24,15 +24,13 @@ pub async fn publish_messages(
                 duration,
                 topic
             );
-            mqtt_client
-                .publish(
-                    topic,
-                    rumqttc::QoS::AtLeastOnce,
-                    false,
-                    message_str.as_bytes(),
-                )
-                .await
-                .unwrap();
+            let result = mqtt_client
+                .publish(topic, rumqttc::QoS::AtLeastOnce, false, message_str)
+                .await;
+            match result {
+                Ok(r) => log::debug!("Everything OK {:?}", r),
+                Err(e) => log::debug!("Error {:?}", e),
+            }
         }
     }
 }
