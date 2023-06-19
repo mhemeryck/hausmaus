@@ -21,7 +21,7 @@ pub async fn subscribe_topics(
 
 /// handle incoming messages
 pub async fn handle_incoming_messages(
-    _tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+    tx: tokio::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
     mqtt_loop: &mut rumqttc::EventLoop,
     command_topic_map: &std::collections::HashMap<String, u8>,
 ) {
@@ -41,7 +41,7 @@ pub async fn handle_incoming_messages(
 
             if let Some(&device_id) = command_topic_map.get(&msg.topic) {
                 log::debug!("Received message for device #{}", device_id);
-                //tx.send((device_id, toggle)).unwrap();
+                tx.send((device_id, toggle)).await.unwrap();
             }
         }
     }

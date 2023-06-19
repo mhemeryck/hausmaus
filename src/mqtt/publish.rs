@@ -7,11 +7,11 @@ use crate::sysfs::FileEvent;
 
 /// handle_messages receives any file events and sends them out over MQTT
 pub async fn publish_messages(
-    rx: std::sync::mpsc::Receiver<FileEvent>,
+    mut rx: tokio::sync::mpsc::Receiver<FileEvent>,
     mqtt_client: rumqttc::AsyncClient,
     state_topic_map: &std::collections::HashMap<u8, String>,
 ) {
-    for (device_id, state, duration) in rx {
+    while let Some((device_id, state, duration)) = rx.recv().await {
         let message_str: &str = match state {
             true => "ON",
             false => "OFF",

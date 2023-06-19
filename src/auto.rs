@@ -1,29 +1,29 @@
 /// auto contains the main functions related to automation, and links the different parts together
 use crate::sysfs::FileEvent;
-use std;
+use tokio;
 
 /// Connect channels from sysfs read -> mqtt publish
 pub async fn run_sysfs_to_mqtt(
-    file_read_rx: std::sync::mpsc::Receiver<FileEvent>,
-    log_write_tx: std::sync::mpsc::Sender<FileEvent>,
-    mqtt_publish_tx: std::sync::mpsc::Sender<FileEvent>,
+    mut file_read_rx: tokio::sync::mpsc::Receiver<FileEvent>,
+    log_write_tx: tokio::sync::mpsc::Sender<FileEvent>,
+    mqtt_publish_tx: tokio::sync::mpsc::Sender<FileEvent>,
 ) {
     // Simple pass-through, for now
-    for event in file_read_rx {
+    while let Some(event) = file_read_rx.recv().await {
         // Connect to log write
-        log_write_tx.send(event).unwrap();
+        log_write_tx.send(event).await.unwrap();
 
         // Connect to MQTT publish
-        mqtt_publish_tx.send(event).unwrap();
+        mqtt_publish_tx.send(event).await.unwrap();
     }
 }
 
 pub async fn run_mqtt_to_sysfs(
-    mqtt_subscribe_rx: std::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
-    file_write_tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+    mut mqtt_subscribe_rx: tokio::sync::mpsc::Receiver<crate::mqtt::MQTTEvent>,
+    file_write_tx: tokio::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
 ) {
-    for msg in mqtt_subscribe_rx {
+    while let Some(msg) = mqtt_subscribe_rx.recv().await {
         log::debug!("Message received {:?}", msg);
-        file_write_tx.send(msg).unwrap();
+        file_write_tx.send(msg).await.unwrap();
     }
 }

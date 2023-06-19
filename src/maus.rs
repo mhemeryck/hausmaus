@@ -6,6 +6,7 @@ use std;
 
 const MQTT_KEEP_ALIVE: u64 = 20;
 const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
+const TOKIO_CHANNEL_CAP: usize = 4;
 
 /// run is the main entry point to start the maus
 ///
@@ -66,11 +67,11 @@ pub async fn run(
     crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map).await;
 
     // Channels
-    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
-    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
-    let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
-    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
-    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
+    let (file_read_tx, file_read_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
+    let (mqtt_publish_tx, mqtt_publish_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
+    let (log_write_tx, log_write_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
+    let (file_write_tx, file_write_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
 
     let mut handles = std::vec::Vec::new();
 

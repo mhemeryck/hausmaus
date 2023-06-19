@@ -1,6 +1,6 @@
 use log;
 use std;
-use std::io::{Read, Seek};
+use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
 use crate::sysfs::FileEvent;
 use tokio;
@@ -8,13 +8,13 @@ use tokio;
 const POLL_INTERVAL: u64 = 200;
 
 /// Wait for toggle on a specific path
-fn wait_for_toggle(
+async fn wait_for_toggle(
     device: crate::device::Device,
-    tx: std::sync::mpsc::Sender<FileEvent>,
+    tx: tokio::sync::mpsc::Sender<FileEvent>,
 ) -> std::io::Result<()> {
     log::debug!("Start monitoring path {:?}", device.path);
-    let file = std::fs::File::open(&device.path)?;
-    let mut reader = std::io::BufReader::new(file);
+    let file = tokio::fs::File::open(&device.path).await?;
+    let mut reader = tokio::io::BufReader::new(file);
     let mut first_char = [0; 1];
 
     let mut last_value: Option<bool> = None;
@@ -22,8 +22,8 @@ fn wait_for_toggle(
 
     loop {
         // Go back to first line and read it again
-        reader.seek(std::io::SeekFrom::Start(0))?;
-        reader.read_exact(&mut first_char)?;
+        reader.seek(std::io::SeekFrom::Start(0)).await?;
+        reader.read_exact(&mut first_char).await?;
         let first_char = first_char[0] as char;
 
         // Parse to bool
@@ -46,7 +46,7 @@ fn wait_for_toggle(
                     value,
                     toggle_time
                 );
-                tx.send((device.id, value, toggle_time)).unwrap();
+                tx.send((device.id, value, toggle_time)).await.unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {
@@ -62,13 +62,13 @@ fn wait_for_toggle(
 /// watch_input file events is the main block responsible for watching SysFS file events
 pub async fn watch_input_file_events(
     devices: std::vec::Vec<crate::device::Device>,
-    tx: std::sync::mpsc::Sender<FileEvent>,
+    tx: tokio::sync::mpsc::Sender<FileEvent>,
 ) {
     let mut handles = std::vec::Vec::with_capacity(devices.len());
     for device in devices {
         let path_tx = tx.clone();
-        let handle = tokio::task::spawn_blocking(move || {
-            wait_for_toggle(device, path_tx).unwrap();
+        let handle = tokio::task::spawn(async move {
+            wait_for_toggle(device, path_tx).await.unwrap();
         });
         handles.push(handle);
     }
