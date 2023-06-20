@@ -1,20 +1,19 @@
 use log;
 use std;
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use std::io::{Read, Seek};
 
 use crate::sysfs::FileEvent;
-use tokio;
 
 const POLL_INTERVAL: u64 = 200;
 
 /// Wait for toggle on a specific path
-async fn wait_for_toggle(
+fn wait_for_toggle(
     device: crate::device::Device,
-    tx: tokio::sync::mpsc::Sender<FileEvent>,
+    tx: std::sync::mpsc::Sender<FileEvent>,
 ) -> std::io::Result<()> {
     log::debug!("Start monitoring path {:?}", device.path);
-    let file = tokio::fs::File::open(&device.path).await?;
-    let mut reader = tokio::io::BufReader::new(file);
+    let file = std::fs::File::open(&device.path)?;
+    let mut reader = std::io::BufReader::new(file);
     let mut first_char = [0; 1];
 
     let mut last_value: Option<bool> = None;
@@ -22,8 +21,8 @@ async fn wait_for_toggle(
 
     loop {
         // Go back to first line and read it again
-        reader.seek(std::io::SeekFrom::Start(0)).await?;
-        reader.read_exact(&mut first_char).await?;
+        reader.seek(std::io::SeekFrom::Start(0))?;
+        reader.read_exact(&mut first_char)?;
         let first_char = first_char[0] as char;
 
         // Parse to bool
@@ -46,7 +45,7 @@ async fn wait_for_toggle(
                     value,
                     toggle_time
                 );
-                tx.send((device.id, value, toggle_time)).await.unwrap();
+                tx.send((device.id, value, toggle_time)).unwrap();
                 last_toggle_time = Some(std::time::Instant::now());
             }
         } else {
@@ -60,19 +59,20 @@ async fn wait_for_toggle(
 }
 
 /// watch_input file events is the main block responsible for watching SysFS file events
-pub async fn watch_input_file_events(
+pub fn watch_input_file_events(
     devices: std::vec::Vec<crate::device::Device>,
-    tx: tokio::sync::mpsc::Sender<FileEvent>,
+    tx: std::sync::mpsc::Sender<FileEvent>,
 ) {
     let mut handles = std::vec::Vec::with_capacity(devices.len());
     for device in devices {
         let path_tx = tx.clone();
-        let handle = tokio::task::spawn(async move {
-            wait_for_toggle(device, path_tx).await.unwrap();
+        let handle = std::thread::spawn(move || {
+            wait_for_toggle(device, path_tx).unwrap();
         });
         handles.push(handle);
     }
 
-    // Block on the file handles processing
-    futures::future::join_all(handles).await;
+    for handle in handles {
+        handle.join().unwrap();
+    }
 }

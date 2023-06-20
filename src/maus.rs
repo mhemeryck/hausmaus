@@ -6,7 +6,6 @@ use std;
 
 const MQTT_KEEP_ALIVE: u64 = 20;
 const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
-const TOKIO_CHANNEL_CAP: usize = 4;
 
 /// run is the main entry point to start the maus
 ///
@@ -14,8 +13,7 @@ const TOKIO_CHANNEL_CAP: usize = 4;
 /// - all input reader threads
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
-#[tokio::main]
-pub async fn run(
+pub fn run(
     mqtt_host: &str,
     sysfs_path: &str,
     device_name: &str,
@@ -59,70 +57,71 @@ pub async fn run(
     let mut mqtt_options = rumqttc::MqttOptions::new(mqtt_client_id, mqtt_host, 1883);
     mqtt_options.set_keep_alive(std::time::Duration::from_secs(MQTT_KEEP_ALIVE));
 
-    let (mqtt_client, mut mqtt_loop) =
-        rumqttc::AsyncClient::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
+    let (mqtt_client, mut mqtt_loop): (rumqttc::Client, rumqttc::Connection) =
+        rumqttc::Client::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
     //let mqtt_client = std::sync::Arc::new(mqtt_client);
 
     // Subscribe
-    crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map).await;
+    crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map);
 
     // Channels
-    let (file_read_tx, file_read_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
-    let (mqtt_publish_tx, mqtt_publish_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
-    let (log_write_tx, log_write_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
-    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
-    let (file_write_tx, file_write_rx) = tokio::sync::mpsc::channel(TOKIO_CHANNEL_CAP);
+    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
+    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
+    let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
+    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
 
     let mut handles = std::vec::Vec::new();
 
     log::debug!("Start main file event watcher thread");
     let tx = file_read_tx.clone();
-    let handle = tokio::spawn(async move {
-        crate::sysfs::read::watch_input_file_events(devices.clone(), tx).await;
+    let handle = std::thread::spawn(move || {
+        crate::sysfs::read::watch_input_file_events(devices.clone(), tx);
     });
     handles.push(handle);
 
-    log::debug!("Start thread to write to events");
-    let handle = tokio::spawn(async move {
-        crate::dummy::write_events(log_write_rx).await;
-    });
-    handles.push(handle);
+    //log::debug!("Start thread to write to events");
+    //let handle = tokio::spawn(async move {
+    //    crate::dummy::write_events(log_write_rx).await;
+    //});
+    //handles.push(handle);
 
     log::debug!("Start thread to connect path sysfs read -> mqtt publish");
-    let handle = tokio::spawn(async move {
-        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx).await;
+    let handle = std::thread::spawn(move || {
+        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx);
     });
     handles.push(handle);
 
     log::debug!("Start thread to connect to handle MQTT publishing");
-    let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, mqtt_client, &state_topic_map).await
+    let handle = std::thread::spawn(move || {
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, mqtt_client, &state_topic_map);
     });
     handles.push(handle);
 
     log::debug!("Start thread to connect MQTT subscribe -> sys write");
-    let handle = tokio::spawn(async move {
-        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx).await;
+    let handle = std::thread::spawn(move || {
+        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx);
     });
     handles.push(handle);
 
     log::debug!("Start thread to subscribe to and handle MQTT command topics");
-    let handle = tokio::spawn(async move {
+    let handle = std::thread::spawn(move || {
         crate::mqtt::subscribe::handle_incoming_messages(
             mqtt_subscribe_tx,
             &mut mqtt_loop,
             &command_topic_map,
         )
-        .await
     });
     handles.push(handle);
 
     log::debug!("Start thread to subscribe to and handle MQTT command topics");
-    let handle = tokio::spawn(async move {
-        crate::sysfs::write::handle_file_command(file_write_rx, &path_map).await;
+    let handle = std::thread::spawn(move || {
+        crate::sysfs::write::handle_file_command(file_write_rx, &path_map);
     });
     handles.push(handle);
 
     // Block on the handles processing
-    futures::future::join_all(handles).await;
+    for handle in handles {
+        handle.join().unwrap();
+    }
 }

@@ -3,8 +3,8 @@ use rumqttc;
 use std;
 
 /// Subscribe to the topics as available in the topics from the command topic map
-pub async fn subscribe_topics(
-    mqtt_client: &rumqttc::AsyncClient,
+pub fn subscribe_topics(
+    mqtt_client: &rumqttc::Client,
     command_topic_map: &std::collections::HashMap<String, u8>,
 ) {
     // COnvert to vector of (topic, QoS)
@@ -16,20 +16,19 @@ pub async fn subscribe_topics(
         });
     }
 
-    mqtt_client.subscribe_many(topic_qos).await.unwrap();
+    mqtt_client.subscribe_many(topic_qos).unwrap();
 }
 
 /// handle incoming messages
-pub async fn handle_incoming_messages(
-    tx: tokio::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
-    mqtt_loop: &mut rumqttc::EventLoop,
+pub fn handle_incoming_messages(
+    tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
+    mqtt_loop: &mut rumqttc::Connection,
     command_topic_map: &std::collections::HashMap<String, u8>,
 ) {
     // handle message
-    loop {
-        let event = mqtt_loop.poll().await.unwrap();
+    for event in mqtt_loop.iter() {
         log::debug!("Received incoming event {:?}", event);
-        if let rumqttc::Event::Incoming(rumqttc::Packet::Publish(msg)) = event {
+        if let Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(msg))) = event {
             log::debug!("Incoming event {:?} {:?}", msg.topic, msg.payload);
 
             let toggle: bool;
@@ -41,7 +40,7 @@ pub async fn handle_incoming_messages(
 
             if let Some(&device_id) = command_topic_map.get(&msg.topic) {
                 log::debug!("Received message for device #{}", device_id);
-                tx.send((device_id, toggle)).await.unwrap();
+                tx.send((device_id, toggle)).unwrap();
             }
         }
     }
