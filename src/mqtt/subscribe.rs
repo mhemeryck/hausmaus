@@ -4,7 +4,7 @@ use std;
 
 /// Subscribe to the topics as available in the topics from the command topic map
 pub fn subscribe_topics(
-    mqtt_client: &rumqttc::Client,
+    mqtt_client: &mut rumqttc::Client,
     command_topic_map: &std::collections::HashMap<String, u8>,
 ) {
     // COnvert to vector of (topic, QoS)

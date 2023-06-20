@@ -1,5 +1,4 @@
 use env_logger;
-use futures;
 use log;
 use rumqttc;
 use std;
@@ -57,12 +56,12 @@ pub fn run(
     let mut mqtt_options = rumqttc::MqttOptions::new(mqtt_client_id, mqtt_host, 1883);
     mqtt_options.set_keep_alive(std::time::Duration::from_secs(MQTT_KEEP_ALIVE));
 
-    let (mqtt_client, mut mqtt_loop): (rumqttc::Client, rumqttc::Connection) =
+    let (mut mqtt_client, mut mqtt_loop): (rumqttc::Client, rumqttc::Connection) =
         rumqttc::Client::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
     //let mqtt_client = std::sync::Arc::new(mqtt_client);
 
     // Subscribe
-    crate::mqtt::subscribe::subscribe_topics(&mqtt_client, &command_topic_map);
+    crate::mqtt::subscribe::subscribe_topics(&mut mqtt_client, &command_topic_map);
 
     // Channels
     let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
@@ -80,11 +79,11 @@ pub fn run(
     });
     handles.push(handle);
 
-    //log::debug!("Start thread to write to events");
-    //let handle = tokio::spawn(async move {
-    //    crate::dummy::write_events(log_write_rx).await;
-    //});
-    //handles.push(handle);
+    log::debug!("Start thread to write to events");
+    let handle = std::thread::spawn(move || {
+        crate::dummy::write_events(log_write_rx);
+    });
+    handles.push(handle);
 
     log::debug!("Start thread to connect path sysfs read -> mqtt publish");
     let handle = std::thread::spawn(move || {
