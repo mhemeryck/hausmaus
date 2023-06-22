@@ -185,6 +185,7 @@ pub fn device_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
 
     #[test]
     fn test_state_topic_for_device() {
@@ -239,5 +240,72 @@ mod tests {
         if let Some(_) = re.captures(path) {
             panic!("Found a device, should not be the case");
         }
+    }
+
+    #[test]
+    fn test_crawl_simple_file_matches() {
+        // Top-level tmp dir
+        let tmp_dir =
+            tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
+        // Paths between
+        let folder_structure = "sys/devices/platform/unipi_plc/io_group2/di_2_07/";
+        let full_path = tmp_dir.path().join(folder_structure);
+        // Create them
+        std::fs::create_dir_all(&full_path).expect("Could not create folder");
+        // The final path
+        let path = full_path.join("di_value");
+
+        // Write some stuff
+        let mut tmp_file = std::fs::File::create(&path).expect("Could not open a new temp file");
+        writeln!(tmp_file, "Hello").expect("Could not write contents to temp file");
+
+        let module_name = "foo";
+        let re = regex::Regex::new(crate::device::FILENAME_PATTERN).unwrap();
+
+        let mut devices = std::vec::Vec::new();
+
+        crawl(tmp_dir.path(), &module_name, &re, &mut devices).expect("Expect crawl to work");
+
+        assert_eq!(devices.len(), 1);
+
+        let path_string = String::from(path.to_str().unwrap());
+
+        let device = &devices[0];
+        assert_eq!(device.module_name, "foo");
+        assert_eq!(device.number, 7);
+        assert_eq!(device.io_group, 2);
+        assert_eq!(device.device_type, DeviceType::DigitalInput);
+        assert_eq!(device.path, path_string);
+
+        tmp_dir.close().unwrap();
+    }
+
+    #[test]
+    fn test_crawl_simple_file_no_matches() {
+        // Top-level tmp dir
+        let tmp_dir =
+            tempdir::TempDir::new("myfolder").expect("Could not create a temporary folder");
+        // Paths between
+        let folder_structure = "sys/devices/platform/unipi_plc/io_group2/di_2_07/";
+        let full_path = tmp_dir.path().join(folder_structure);
+        // Create them
+        std::fs::create_dir_all(&full_path).expect("Could not create folder");
+        // The final path
+        let path = full_path.join("foohaha");
+
+        // Write some stuff
+        let mut tmp_file = std::fs::File::create(&path).expect("Could not open a new temp file");
+        writeln!(tmp_file, "Hello").expect("Could not write contents to temp file");
+
+        let module_name = "foo";
+        let re = regex::Regex::new(crate::device::FILENAME_PATTERN).unwrap();
+
+        let mut devices = std::vec::Vec::new();
+
+        crawl(tmp_dir.path(), &module_name, &re, &mut devices).expect("Expect crawl to work");
+
+        assert_eq!(devices.len(), 0);
+
+        tmp_dir.close().unwrap();
     }
 }
