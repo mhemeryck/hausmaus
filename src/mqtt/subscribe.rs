@@ -31,16 +31,19 @@ pub fn handle_incoming_messages(
         if let Ok(rumqttc::Event::Incoming(rumqttc::Packet::Publish(msg))) = event {
             log::debug!("Incoming event {:?} {:?}", msg.topic, msg.payload);
 
-            let toggle: bool;
-            if String::from_utf8_lossy(&msg.payload) == "ON" {
-                toggle = true;
-            } else {
-                toggle = false;
-            }
+            if let Ok(payload) = std::str::from_utf8(&msg.payload.to_owned()) {
+                let toggle: Option<bool> = match payload {
+                    "ON" => Some(true),
+                    "OFF" => Some(false),
+                    _ => None,
+                };
 
-            if let Some(&device_id) = command_topic_map.get(&msg.topic) {
-                log::debug!("Received message for device #{}", device_id);
-                tx.send((device_id, toggle)).unwrap();
+                if let (Some(&device_id), Some(payload)) =
+                    (command_topic_map.get(&msg.topic), toggle)
+                {
+                    log::debug!("Received message for device #{}", device_id);
+                    tx.send((device_id, payload)).unwrap();
+                }
             }
         }
     }

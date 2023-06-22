@@ -19,7 +19,9 @@ pub struct Device {
     pub number: i8,
     pub path: String,
 }
+
 const FILENAME_PATTERN: &str = r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
+
 // Construct a device from a regex captures
 fn device_from_captures(
     captures: &regex::Captures,
