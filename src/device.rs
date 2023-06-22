@@ -182,35 +182,6 @@ pub fn device_paths(
     }
 }
 
-//#[cfg(test)]
-//mod tests {
-//    use super::*;
-//
-//    #[test]
-//    fn test_device_from_path() {
-//        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
-//        let module_name = "foo";
-//        if let Ok(device) = Device::from_path(&path, &module_name) {
-//            assert_eq!(device.module_name, "foo");
-//            assert_eq!(device.number, 7);
-//            assert_eq!(device.io_group, 2);
-//            assert_eq!(device.device_type, DeviceType::DigitalInput);
-//            assert_eq!(device.path, path.to_string());
-//        } else {
-//            panic!("Could not find a device from path");
-//        }
-//    }
-//
-//    #[test]
-//    fn test_device_from_path_not_found() {
-//        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
-//        let module_name = "foo";
-//        if let Ok(_) = Device::from_path(&path, &module_name) {
-//            panic!("It shouldn't find a device in this case!");
-//        }
-//    }
-//}
-//
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -241,5 +212,32 @@ mod tests {
         };
 
         assert_eq!(command_topic_for_device(&device), "foo/output/1_03/set");
+    }
+
+    #[test]
+    fn test_device_from_captures() {
+        let id = 1;
+        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
+        let module_name = "foo";
+        let re = regex::Regex::new(crate::device::FILENAME_PATTERN).unwrap();
+        let captures = re.captures(path).unwrap();
+        if let Ok(device) = device_from_captures(&captures, id, &path, &module_name) {
+            assert_eq!(device.module_name, "foo");
+            assert_eq!(device.number, 7);
+            assert_eq!(device.io_group, 2);
+            assert_eq!(device.device_type, DeviceType::DigitalInput);
+            assert_eq!(device.path, path.to_string());
+        } else {
+            panic!("Could not find a device from path");
+        }
+    }
+
+    #[test]
+    fn test_device_from_captures_not_found() {
+        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
+        let re = regex::Regex::new(crate::device::FILENAME_PATTERN).unwrap();
+        if let Some(_) = re.captures(path) {
+            panic!("Found a device, should not be the case");
+        }
     }
 }

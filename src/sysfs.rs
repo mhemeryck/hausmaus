@@ -53,28 +53,4 @@ pub type FileEvent = (u8, bool, std::time::Duration);
 //        tmp_dir.close().unwrap();
 //    }
 //
-//    #[test]
-//    fn test_device_from_path() {
-//        let module_name = "foo";
-//        let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
-//        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/di_value";
-//        if let Some(device) = device_from_path(&module_name, &re, &path) {
-//            assert_eq!(device.module_name, "foo");
-//            assert_eq!(device.number, 7);
-//            assert_eq!(device.io_group, 2);
-//            assert_eq!(device.device_type, DeviceType::DigitalInput);
-//        } else {
-//            panic!("Could not find a device from path");
-//        }
-//    }
-//
-//    #[test]
-//    fn test_device_from_path_not_found() {
-//        let module_name = "foo";
-//        let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
-//        let path = "sys/devices/platform/unipi_plc/io_group2/di_2_07/foo";
-//        if let Some(_) = device_from_path(&module_name, &re, &path) {
-//            panic!("It shouldn't find a device in this case!");
-//        }
-//    }
 //}
