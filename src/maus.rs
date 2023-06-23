@@ -1,13 +1,10 @@
 use env_logger;
-use futures;
 use log;
-use paho_mqtt;
-use regex;
+use rumqttc;
 use std;
 
-// Check whether we need all devices here or just the digital inputs
-const FILENAME_PATTERN: &str = r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<io_group>1|2|3)_(?P<number>\d{2})/(di|do|ro)_value$";
 const MQTT_KEEP_ALIVE: u64 = 20;
+const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
 
 /// run is the main entry point to start the maus
 ///
@@ -15,8 +12,7 @@ const MQTT_KEEP_ALIVE: u64 = 20;
 /// - all input reader threads
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
-#[tokio::main]
-pub async fn run(
+pub fn run(
     mqtt_host: &str,
     sysfs_path: &str,
     device_name: &str,
@@ -31,114 +27,100 @@ pub async fn run(
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     log::debug!("Start hausmaus");
+
     // Crawl a folder for paths to watch based on a regex
     log::debug!("Start crawling path {:?}", sysfs_path);
-    let mut paths: std::vec::Vec<std::path::PathBuf> = std::vec::Vec::new();
-    let re = regex::Regex::new(FILENAME_PATTERN).unwrap();
-    crate::sysfs::crawl(&std::path::Path::new(&sysfs_path), &re, &mut paths).unwrap();
-    log::debug!("Finished crawling path {:?}", sysfs_path);
-
-    // Determine the sysfs path prefix from a single found path and the regex
-    let mut prefix: String = String::from("");
-    if let Some(path_str) = paths[0].to_str() {
-        if let Some(position) = re.find(path_str) {
-            prefix = path_str[..position.start()].to_string();
-        }
+    let mut devices: std::vec::Vec<crate::device::Device> = std::vec::Vec::new();
+    crate::device::devices_from_path(sysfs_path, device_name, &mut devices).unwrap();
+    log::info!("Finished crawling path {:?}", sysfs_path);
+    for device in &devices {
+        log::debug!("Found device with id {} {:?}", device.id, device.path);
     }
-    log::debug!("Prefix: {:?}", prefix);
+    log::debug!("Number of devices: {}", devices.len());
 
-    // turn into mut ref
-    let device_name = device_name.to_string();
+    log::debug!("Build mapping of state topics for devices");
+    let mut state_topic_map: std::collections::HashMap<u8, String> =
+        std::collections::HashMap::new();
+    crate::device::device_state_topics(&devices, &mut state_topic_map);
+
+    log::debug!("Build mapping of command topics for devices");
+    let mut command_topic_map: std::collections::HashMap<String, u8> =
+        std::collections::HashMap::new();
+    crate::device::device_command_topics(&devices, &mut command_topic_map);
+
+    log::debug!("Build mapping of paths for devices");
+    let mut path_map: std::collections::HashMap<u8, String> = std::collections::HashMap::new();
+    crate::device::device_paths(&devices, &mut path_map);
+
+    // MQTT setup
+    let mut mqtt_options = rumqttc::MqttOptions::new(mqtt_client_id, mqtt_host, 1883);
+    mqtt_options.set_keep_alive(std::time::Duration::from_secs(MQTT_KEEP_ALIVE));
+
+    let (mut mqtt_client, mut mqtt_loop): (rumqttc::Client, rumqttc::Connection) =
+        rumqttc::Client::new(mqtt_options, MQTT_CLIENT_CHANNEL_CAP);
+    //let mqtt_client = std::sync::Arc::new(mqtt_client);
+
+    // Subscribe
+    crate::mqtt::subscribe::subscribe_topics(&mut mqtt_client, &command_topic_map);
+
+    // Channels
+    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
+    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
+    let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
+    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
+    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
 
     let mut handles = std::vec::Vec::new();
 
-    // create list of devices
-    let mut devices: std::vec::Vec<crate::device::Device> = std::vec::Vec::new();
-    crate::sysfs::devices_from_paths(device_name.as_str(), &re, &paths, &mut devices);
-
-    // file read channel
-    let (file_read_tx, file_read_rx) = std::sync::mpsc::channel();
-
-    // MQTT setup
-    let create_opts = paho_mqtt::CreateOptionsBuilder::new()
-        .server_uri(mqtt_host)
-        .client_id(mqtt_client_id.to_string())
-        .finalize();
-    let conn_opts = paho_mqtt::ConnectOptionsBuilder::new()
-        .keep_alive_interval(std::time::Duration::from_secs(MQTT_KEEP_ALIVE))
-        .clean_session(true)
-        .finalize();
-    let mqtt_client = std::sync::Arc::new(paho_mqtt::AsyncClient::new(create_opts).unwrap());
-    mqtt_client.connect(conn_opts).await.unwrap();
-    let (mqtt_publish_tx, mqtt_publish_rx) = std::sync::mpsc::channel();
-
-    // dummy log write channel
-    let (log_write_tx, log_write_rx) = std::sync::mpsc::channel();
-
     log::debug!("Start main file event watcher thread");
-    let file_event_paths = paths.clone();
-    let file_event_tx = file_read_tx.clone();
-    let device_name_clone = device_name.clone();
-    let filename_pattern = FILENAME_PATTERN.to_string();
-    let handle = tokio::spawn(async move {
-        crate::sysfs::read::watch_input_file_events(
-            file_event_paths,
-            device_name_clone,
-            filename_pattern,
-            file_event_tx,
-        )
-        .await;
+    let tx = file_read_tx.clone();
+    let handle = std::thread::spawn(move || {
+        crate::sysfs::read::watch_input_file_events(devices.clone(), tx);
     });
     handles.push(handle);
 
     log::debug!("Start thread to write to events");
-    let handle = tokio::spawn(async move {
-        crate::dummy::write_events(log_write_rx).await;
+    let handle = std::thread::spawn(move || {
+        crate::dummy::write_events(log_write_rx);
     });
     handles.push(handle);
 
-    log::debug!("Start thread to connect all together");
-    let handle = tokio::spawn(async move {
-        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx).await;
+    log::debug!("Start thread to connect path sysfs read -> mqtt publish");
+    let handle = std::thread::spawn(move || {
+        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx);
     });
     handles.push(handle);
 
     log::debug!("Start thread to connect to handle MQTT publishing");
-    let mqtt_publish_client = mqtt_client.clone();
-    let handle = tokio::spawn(async move {
-        crate::mqtt::publish::publish_messages(mqtt_publish_rx, &mqtt_publish_client)
-            .await
-            .unwrap();
+    let handle = std::thread::spawn(move || {
+        crate::mqtt::publish::publish_messages(mqtt_publish_rx, mqtt_client, &state_topic_map);
     });
     handles.push(handle);
 
-    let (file_write_tx, file_write_rx) = std::sync::mpsc::channel();
-
-    let (mqtt_subscribe_tx, mqtt_subscribe_rx) = std::sync::mpsc::channel();
-
-    let handle = tokio::spawn(async move {
-        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx).await;
+    log::debug!("Start thread to connect MQTT subscribe -> sys write");
+    let handle = std::thread::spawn(move || {
+        crate::auto::run_mqtt_to_sysfs(mqtt_subscribe_rx, file_write_tx);
     });
     handles.push(handle);
 
-    log::debug!("Start thread to subscribe to  and handle MQTT command topics");
-    let mqtt_subscribe_tx_clone = mqtt_subscribe_tx.clone();
-    let handle = tokio::spawn(async move {
+    log::debug!("Start thread to subscribe to and handle MQTT command topics");
+    let handle = std::thread::spawn(move || {
         crate::mqtt::subscribe::handle_incoming_messages(
-            &mqtt_client,
-            &devices,
-            mqtt_subscribe_tx_clone,
+            mqtt_subscribe_tx,
+            &mut mqtt_loop,
+            &command_topic_map,
         )
-        .await
-        .unwrap();
     });
     handles.push(handle);
 
-    let handle = tokio::spawn(async move {
-        crate::sysfs::write::handle_file_command(prefix, file_write_rx).await;
+    log::debug!("Start thread to subscribe to and handle MQTT command topics");
+    let handle = std::thread::spawn(move || {
+        crate::sysfs::write::handle_file_command(file_write_rx, &path_map);
     });
     handles.push(handle);
 
     // Block on the handles processing
-    futures::future::join_all(handles).await;
+    for handle in handles {
+        handle.join().unwrap();
+    }
 }
