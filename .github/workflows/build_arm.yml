@@ -1,9 +1,6 @@
 name: Build for ARM
 on:
   workflow_dispatch:
-  release:
-    types:
-      - created
 
 jobs:
   xcompile:
