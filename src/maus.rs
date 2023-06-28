@@ -67,8 +67,9 @@ pub fn run(mqtt_host: &str, sysfs_path: &str, device_name: &str, mqtt_client_id:
     handles.push(handle);
 
     log::debug!("Start thread to connect path sysfs read -> mqtt publish");
+    let fwt = file_write_tx.clone();
     let handle = std::thread::spawn(move || {
-        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx);
+        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx, fwt);
     });
     handles.push(handle);
 
