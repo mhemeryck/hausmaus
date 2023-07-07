@@ -1,9 +1,5 @@
 use clap::Parser;
 
-use hausmaus;
-use hostname;
-use slug;
-
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {
@@ -41,10 +37,7 @@ fn device_name() -> Option<String> {
 fn main() {
     let cli = Cli::parse();
 
-    let sysfs_path = match cli.sysfs.as_deref() {
-        Some(sysfs_path) => sysfs_path,
-        None => "/run/unipi",
-    };
+    let sysfs_path = cli.sysfs.as_deref().unwrap_or("/run/unipi");
 
     let device_name: String = match cli.device_name.as_deref() {
         // from input arg
@@ -57,16 +50,19 @@ fn main() {
 
     let debug = cli.debug;
 
-    let mqtt_client_id = match cli.mqtt_client_id.as_deref() {
-        Some(mqtt_client_id) => mqtt_client_id,
-        None => "hausmaus",
+    let mqtt_client_id = cli.mqtt_client_id.as_deref().unwrap_or("hausmaus");
+
+    // log config
+    let log_level = match debug {
+        true => "debug",
+        false => "info",
     };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     hausmaus::maus::run(
         &cli.mqtt_host,
-        &sysfs_path,
-        &device_name,
-        &mqtt_client_id,
-        debug,
+        sysfs_path,
+        device_name,
+        mqtt_client_id,
     );
 }
