@@ -1,5 +1,3 @@
-use std;
-
 #[derive(Debug)]
 /// base error class
 pub struct MausError {

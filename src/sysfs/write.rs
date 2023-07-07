@@ -1,6 +1,4 @@
 /// Write incoming messages back by updating the related file system entry
-use log;
-use std;
 use std::io::Write;
 
 pub fn handle_file_command(

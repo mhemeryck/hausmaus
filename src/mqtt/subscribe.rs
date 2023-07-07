@@ -1,6 +1,4 @@
 /// subscribe module accepts incoming MQTT messages and forwards it back to the rest
-use rumqttc;
-use std;
 
 /// Subscribe to the topics as available in the topics from the command topic map
 pub fn subscribe_topics(

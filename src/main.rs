@@ -59,10 +59,5 @@ fn main() {
     };
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
-    hausmaus::maus::run(
-        &cli.mqtt_host,
-        sysfs_path,
-        device_name,
-        mqtt_client_id,
-    );
+    hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
 }

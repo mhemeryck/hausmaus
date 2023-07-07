@@ -1,6 +1,3 @@
-use regex;
-use std;
-
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum DeviceType {
     DigitalInput,

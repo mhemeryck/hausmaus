@@ -1,6 +1,4 @@
 /// dummy is just a module to output some of the data by logging it.
-use std;
-
 use crate::sysfs::FileEvent;
 
 /// write_events is just a dummy receiver writing output
