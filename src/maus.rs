@@ -1,8 +1,3 @@
-use env_logger;
-use log;
-use rumqttc;
-use std;
-
 const MQTT_KEEP_ALIVE: u64 = 20;
 const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
 
@@ -12,20 +7,7 @@ const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
 /// - all input reader threads
 /// - all output write threads
 /// - the main automation engine thread to link input events to output events
-pub fn run(
-    mqtt_host: &str,
-    sysfs_path: &str,
-    device_name: &str,
-    mqtt_client_id: &str,
-    debug: bool,
-) {
-    // log config
-    let log_level = match debug {
-        true => "debug",
-        false => "info",
-    };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
-
+pub fn run(mqtt_host: &str, sysfs_path: &str, device_name: &str, mqtt_client_id: &str) {
     log::debug!("Start hausmaus");
 
     // Crawl a folder for paths to watch based on a regex
@@ -73,9 +55,8 @@ pub fn run(
     let mut handles = std::vec::Vec::new();
 
     log::debug!("Start main file event watcher thread");
-    let tx = file_read_tx.clone();
     let handle = std::thread::spawn(move || {
-        crate::sysfs::read::watch_input_file_events(devices.clone(), tx);
+        crate::sysfs::read::watch_input_file_events(devices.clone(), file_read_tx);
     });
     handles.push(handle);
 

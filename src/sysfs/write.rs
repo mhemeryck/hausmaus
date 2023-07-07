@@ -1,6 +1,4 @@
 /// Write incoming messages back by updating the related file system entry
-use log;
-use std;
 use std::io::Write;
 
 pub fn handle_file_command(
@@ -15,7 +13,7 @@ pub fn handle_file_command(
                 toggle,
                 path
             );
-            if let Ok(mut file) = std::fs::File::create(&path) {
+            if let Ok(mut file) = std::fs::File::create(path) {
                 let content = match toggle {
                     true => "1",
                     false => "0",

@@ -1,8 +1,4 @@
 /// publish module accepts all incoming events and publishes them to MQTT
-use log;
-use rumqttc;
-use std;
-
 use crate::sysfs::FileEvent;
 
 /// handle_messages receives any file events and sends them out over MQTT

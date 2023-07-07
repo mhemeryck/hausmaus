@@ -1,5 +1,3 @@
-use log;
-use std;
 use std::io::{Read, Seek};
 
 use crate::sysfs::FileEvent;

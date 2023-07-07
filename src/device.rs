@@ -1,6 +1,3 @@
-use regex;
-use std;
-
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum DeviceType {
     DigitalInput,
@@ -92,16 +89,12 @@ fn crawl(
             // dirs need to be crawled further
             if path.is_dir() {
                 crawl(&path, module_name, re, devices)?;
-            } else {
-                if let Some(path_str) = path.to_str() {
-                    // The id we use here is just the current length of the list
-                    let id: u8 = devices.len().try_into().unwrap();
-                    if let Some(captures) = re.captures(path_str) {
-                        if let Ok(device) =
-                            device_from_captures(&captures, id, path_str, module_name)
-                        {
-                            devices.push(device);
-                        }
+            } else if let Some(path_str) = path.to_str() {
+                // The id we use here is just the current length of the list
+                let id: u8 = devices.len().try_into().unwrap();
+                if let Some(captures) = re.captures(path_str) {
+                    if let Ok(device) = device_from_captures(&captures, id, path_str, module_name) {
+                        devices.push(device);
                     }
                 }
             }
@@ -117,7 +110,7 @@ pub fn devices_from_path(
     devices: &mut std::vec::Vec<crate::device::Device>,
 ) -> Result<(), crate::errors::MausError> {
     if let Ok(re) = regex::Regex::new(FILENAME_PATTERN) {
-        crawl(&std::path::Path::new(&dir), module_name, &re, devices).unwrap();
+        crawl(std::path::Path::new(&dir), module_name, &re, devices).unwrap();
         return Ok(());
     }
     Err(crate::errors::MausError::new(
@@ -160,7 +153,7 @@ pub fn device_state_topics(
     cache: &mut std::collections::HashMap<u8, String>,
 ) {
     for device in devices {
-        cache.insert(device.id, state_topic_for_device(&device));
+        cache.insert(device.id, state_topic_for_device(device));
     }
 }
 
@@ -170,7 +163,7 @@ pub fn device_command_topics(
     cache: &mut std::collections::HashMap<String, u8>,
 ) {
     for device in devices {
-        cache.insert(command_topic_for_device(&device), device.id);
+        cache.insert(command_topic_for_device(device), device.id);
     }
 }
 
