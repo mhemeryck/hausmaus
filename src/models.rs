@@ -64,8 +64,8 @@ pub struct Cover {
 impl Cover {
     pub fn new(motor_up: u8, motor_down: u8) -> Self {
         Self {
-            motor_up: motor_up,
-            motor_down: motor_down,
+            motor_up,
+            motor_down,
             state: CoverState::Stopped,
             position: CoverPosition::Open,
         }

@@ -1,9 +1,11 @@
+use std::thread::JoinHandle;
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 
 use clap::Parser;
 
 use crossbeam::channel::bounded;
+use crossbeam::channel::Receiver;
 use crossbeam::select;
 use hausmaus::models::{Cover, CoverEvent};
 
@@ -69,8 +71,26 @@ fn main2() {
     hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
 }
 
+fn monitor(event_rx: Receiver<CoverEvent>, timer_rx: Receiver<CoverEvent>) -> JoinHandle<()> {
+    spawn(move || {
+        let mut cover = Cover::new(0, 1);
+        loop {
+            select! {
+                recv(event_rx) -> msg => {
+                    if let Ok(CoverEvent::PushButtonOpen) | Ok(CoverEvent::PushButtonClose) = msg {
+                        log::info!("Got an event {:?}", msg);
+                        cover.process_event(msg.unwrap());
+                    }
+                },
+                recv(timer_rx) -> msg => {
+                    log::info!("Got an timer {:?}", msg);
+                },
+            }
+        }
+    })
+}
+
 fn main() {
-    //let mut cover = Cover::new(0, 1);
     let log_level = "info";
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
     //log::info!("New cover created {:?}", cover);
@@ -87,39 +107,22 @@ fn main() {
         }
     });
 
-    let event_handle = spawn(move || {
-        log::info!("Sending open");
-        event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-        sleep(Duration::from_secs(1));
-        log::info!("Sending close");
-        event_tx.send(CoverEvent::PushButtonClose).unwrap();
-        sleep(Duration::from_secs(1));
-        log::info!("Sending close");
-        event_tx.send(CoverEvent::PushButtonClose).unwrap();
-        sleep(Duration::from_secs(1));
-        log::info!("Sending open");
-        event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-        sleep(Duration::from_secs(1));
-    });
+    let monitor_handle = monitor(event_rx, timer_rx);
 
-    let monitor_handle = spawn(move || loop {
-        select! {
-            recv(event_rx) -> msg => {
-                match msg {
-                    Ok(CoverEvent::PushButtonOpen) | Ok(CoverEvent::PushButtonClose) => {
-                        log::info!("Got an event {:?}", msg);
-                    }
-                    _ => {}
-                }
-            },
-            recv(timer_rx) -> msg => {
-                log::info!("Got an timer {:?}", msg);
-            },
-        }
-    });
+    log::info!("Sending open");
+    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
+    sleep(Duration::from_secs(1));
+    log::info!("Sending close");
+    event_tx.send(CoverEvent::PushButtonClose).unwrap();
+    sleep(Duration::from_secs(1));
+    log::info!("Sending close");
+    event_tx.send(CoverEvent::PushButtonClose).unwrap();
+    sleep(Duration::from_secs(1));
+    log::info!("Sending open");
+    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
+    sleep(Duration::from_secs(1));
 
     timer_handle.join().unwrap();
-    event_handle.join().unwrap();
     monitor_handle.join().unwrap();
 
     //let (tx, rx) = bounded(4);
