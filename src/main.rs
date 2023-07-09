@@ -6,7 +6,7 @@ use clap::Parser;
 
 use crossbeam::channel::{bounded, tick, Receiver};
 use crossbeam::select;
-use hausmaus::models::{Cover, CoverEvent};
+use hausmaus::models::{Cover, CoverEvent, CoverPosition};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -73,6 +73,7 @@ fn main2() {
 fn monitor(event_rx: Receiver<CoverEvent>, ticker: Receiver<Instant>) -> JoinHandle<()> {
     spawn(move || {
         let mut cover = Cover::new(0, 1);
+        cover.position = CoverPosition::Closed;
         loop {
             select! {
                 recv(event_rx) -> msg => {
@@ -104,10 +105,10 @@ fn main() {
 
     log::info!("Sending open");
     event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_secs(3));
     log::info!("Sending close");
     event_tx.send(CoverEvent::PushButtonClose).unwrap();
-    sleep(Duration::from_secs(3));
+    sleep(Duration::from_secs(10));
     log::info!("Sending open");
     event_tx.send(CoverEvent::PushButtonOpen).unwrap();
 

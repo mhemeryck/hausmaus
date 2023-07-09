@@ -29,7 +29,7 @@ struct DimmableLight {
     brightness: u8,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CoverPosition {
     Open,
     Closed,
@@ -129,44 +129,53 @@ impl Cover {
                 self.open()
             }
             (CoverState::Stopped, CoverEvent::TimerTick) => {
-                log::info!("I was stopped -> time went by -- nothing left to do!")
-                // TODO: implement timing logic
+                log::info!("I was stopped -> time went by -- nothing left to do!");
             }
             (CoverState::Opening, CoverEvent::TimerTick) => {
                 log::info!("I was opening -> time went by!");
 
-                match self.position {
-                    CoverPosition::Open => {
-                        log::info!("Already completely open, nothing left to do");
-                    }
+                self.position = match self.position {
                     CoverPosition::Closed => {
-                        self.position = CoverPosition::Position(1);
+                        CoverPosition::Position(1)
                     }
-                    CoverPosition::Position(pos) => {
-                        if pos < COVER_MAX_POSITION {
-                            self.position = CoverPosition::Position(pos + 1)
-                        } else {
-                            self.position = CoverPosition::Open
-                        }
+                    CoverPosition::Position(pos) if pos < COVER_MAX_POSITION => {
+                        CoverPosition::Position(pos + 1)
                     }
-                }
+                    CoverPosition::Position(_) | CoverPosition::Open => {
+                        CoverPosition::Open
+                    }
+                };
+
                 log::info!("New position {:?}", self.position);
+
+                if self.position == CoverPosition::Open {
+                    log::info!("I can stop opening now ...");
+                    self.state = CoverState::Stopped;
+                    self.stop()
+                }
             }
             (CoverState::Closing, CoverEvent::TimerTick) => {
                 log::info!("I was closing -> time went by!");
 
-                match self.position {
+                self.position = match self.position {
                     CoverPosition::Open => {
-                        self.position = CoverPosition::Position(u8::MAX - 2);
+                        CoverPosition::Position(COVER_MAX_POSITION - 1)
                     }
-                    CoverPosition::Closed => {
-                        self.position = CoverPosition::Closed;
+                    CoverPosition::Position(pos) if pos > 0 => {
+                        CoverPosition::Position(pos - 1)
                     }
-                    CoverPosition::Position(pos) => {
-                        self.position = CoverPosition::Position(pos - 1);
+                    CoverPosition::Position(_) | CoverPosition::Closed => {
+                        CoverPosition::Closed
                     }
-                }
+                };
+
                 log::info!("New position {:?}", self.position);
+
+                if self.position == CoverPosition::Closed {
+                    log::info!("I can stop closing now ...");
+                    self.state = CoverState::Stopped;
+                    self.stop()
+                }
             }
         }
     }
