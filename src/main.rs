@@ -1,4 +1,11 @@
+use std::thread::{sleep, spawn};
+use std::time::Duration;
+
 use clap::Parser;
+
+use crossbeam::channel::bounded;
+use crossbeam::select;
+use hausmaus::models::{Cover, CoverEvent};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -34,7 +41,7 @@ fn device_name() -> Option<String> {
     }
 }
 
-fn main() {
+fn main2() {
     let cli = Cli::parse();
 
     let sysfs_path = cli.sysfs.as_deref().unwrap_or("/run/unipi");
@@ -60,4 +67,73 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
 
     hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
+}
+
+fn main() {
+    //let mut cover = Cover::new(0, 1);
+    let log_level = "info";
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
+    //log::info!("New cover created {:?}", cover);
+
+    let (event_tx, event_rx) = bounded(4);
+    let (timer_tx, timer_rx) = bounded(4);
+
+    let timer_handle = spawn(move || {
+        let tick_duration = Duration::from_secs_f32(0.5);
+        loop {
+            log::info!("Sending tick");
+            timer_tx.send(CoverEvent::TimerTick).unwrap();
+            sleep(tick_duration);
+        }
+    });
+
+    let event_handle = spawn(move || {
+        log::info!("Sending open");
+        event_tx.send(CoverEvent::PushButtonOpen).unwrap();
+        sleep(Duration::from_secs(1));
+        log::info!("Sending close");
+        event_tx.send(CoverEvent::PushButtonClose).unwrap();
+        sleep(Duration::from_secs(1));
+        log::info!("Sending close");
+        event_tx.send(CoverEvent::PushButtonClose).unwrap();
+        sleep(Duration::from_secs(1));
+        log::info!("Sending open");
+        event_tx.send(CoverEvent::PushButtonOpen).unwrap();
+        sleep(Duration::from_secs(1));
+    });
+
+    let monitor_handle = spawn(move || loop {
+        select! {
+            recv(event_rx) -> msg => {
+                match msg {
+                    Ok(CoverEvent::PushButtonOpen) | Ok(CoverEvent::PushButtonClose) => {
+                        log::info!("Got an event {:?}", msg);
+                    }
+                    _ => {}
+                }
+            },
+            recv(timer_rx) -> msg => {
+                log::info!("Got an timer {:?}", msg);
+            },
+        }
+    });
+
+    timer_handle.join().unwrap();
+    event_handle.join().unwrap();
+    monitor_handle.join().unwrap();
+
+    //let (tx, rx) = bounded(4);
+
+    //cover.start(rx);
+
+    //tx.send(CoverEvent::PushButtonOpen).unwrap();
+
+    //std::thread::sleep(Duration::from_secs(5));
+
+    //tx.send(CoverEvent::PushButtonOpen).unwrap();
+    //tx.send(CoverEvent::PushButtonOpen).unwrap();
+    //tx.send(CoverEvent::PushButtonClose).unwrap();
+    //tx.send(CoverEvent::PushButtonOpen).unwrap();
+    //tx.send(CoverEvent::PushButtonOpen).unwrap();
+    //tx.send(CoverEvent::TimerTick).unwrap();
 }

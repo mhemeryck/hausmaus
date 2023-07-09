@@ -2,7 +2,7 @@ use crate::sysfs::FileEvent;
 /// auto contains the main functions related to automation, and links the different parts together
 use std;
 
-enum Direction {
+enum State {
     Stopped,
     Up,
     Down,
@@ -13,7 +13,8 @@ struct Cover {
     button_down: u8,
     motor_up: u8,
     motor_down: u8,
-    direction: Direction,
+
+    state: State,
     position: u8,
 }
 
@@ -29,7 +30,7 @@ pub fn run_sysfs_to_mqtt(
         button_down: 1,
         motor_up: 2,
         motor_down: 3,
-        direction: Direction::Stopped,
+        state: State::Stopped,
         position: 0,
     };
 
