@@ -37,6 +37,7 @@ pub enum CoverPosition {
 }
 
 const COVER_SLEEP_TIME: f32 = 0.5;
+const COVER_MAX_POSITION: u8 = u8::MAX - 1;
 
 #[derive(Debug, Copy, Clone)]
 pub enum CoverEvent {
@@ -128,19 +129,44 @@ impl Cover {
                 self.open()
             }
             (CoverState::Stopped, CoverEvent::TimerTick) => {
-                log::info!("I was stopped -> time went by!")
+                log::info!("I was stopped -> time went by -- nothing left to do!")
                 // TODO: implement timing logic
             }
             (CoverState::Opening, CoverEvent::TimerTick) => {
-                log::info!("I was opening -> time went by!")
-                // TODO: implement timing logic
+                log::info!("I was opening -> time went by!");
+
+                match self.position {
+                    CoverPosition::Open => {
+                        log::info!("Already completely open, nothing left to do");
+                    }
+                    CoverPosition::Closed => {
+                        self.position = CoverPosition::Position(1);
+                    }
+                    CoverPosition::Position(pos) => {
+                        if pos < COVER_MAX_POSITION {
+                            self.position = CoverPosition::Position(pos + 1)
+                        } else {
+                            self.position = CoverPosition::Open
+                        }
+                    }
+                }
+                log::info!("New position {:?}", self.position);
             }
             (CoverState::Closing, CoverEvent::TimerTick) => {
-                log::info!("I was closing -> time went by!")
-                // TODO: implement timing logic
-            }
-            _ => {
-                log::warn!("Invalid transition from {:?} with {:?}", self.state, event);
+                log::info!("I was closing -> time went by!");
+
+                match self.position {
+                    CoverPosition::Open => {
+                        self.position = CoverPosition::Position(u8::MAX - 2);
+                    }
+                    CoverPosition::Closed => {
+                        self.position = CoverPosition::Closed;
+                    }
+                    CoverPosition::Position(pos) => {
+                        self.position = CoverPosition::Position(pos - 1);
+                    }
+                }
+                log::info!("New position {:?}", self.position);
             }
         }
     }

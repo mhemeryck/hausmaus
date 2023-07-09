@@ -1,11 +1,10 @@
 use std::thread::JoinHandle;
 use std::thread::{sleep, spawn};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::Parser;
 
-use crossbeam::channel::bounded;
-use crossbeam::channel::Receiver;
+use crossbeam::channel::{bounded, tick, Receiver};
 use crossbeam::select;
 use hausmaus::models::{Cover, CoverEvent};
 
@@ -71,7 +70,7 @@ fn main2() {
     hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
 }
 
-fn monitor(event_rx: Receiver<CoverEvent>, timer_rx: Receiver<CoverEvent>) -> JoinHandle<()> {
+fn monitor(event_rx: Receiver<CoverEvent>, ticker: Receiver<Instant>) -> JoinHandle<()> {
     spawn(move || {
         let mut cover = Cover::new(0, 1);
         loop {
@@ -82,8 +81,9 @@ fn monitor(event_rx: Receiver<CoverEvent>, timer_rx: Receiver<CoverEvent>) -> Jo
                         cover.process_event(msg.unwrap());
                     }
                 },
-                recv(timer_rx) -> msg => {
-                    log::info!("Got an timer {:?}", msg);
+                recv(ticker) -> msg => {
+                    log::info!("Got a timer {:?}", msg);
+                    cover.process_event(CoverEvent::TimerTick);
                 },
             }
         }
@@ -95,34 +95,22 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
     //log::info!("New cover created {:?}", cover);
 
+    // Event channel
     let (event_tx, event_rx) = bounded(4);
-    let (timer_tx, timer_rx) = bounded(4);
+    // Ticker
+    let ticker = tick(Duration::from_millis(500));
 
-    let timer_handle = spawn(move || {
-        let tick_duration = Duration::from_secs_f32(0.5);
-        loop {
-            log::info!("Sending tick");
-            timer_tx.send(CoverEvent::TimerTick).unwrap();
-            sleep(tick_duration);
-        }
-    });
-
-    let monitor_handle = monitor(event_rx, timer_rx);
+    let monitor_handle = monitor(event_rx, ticker);
 
     log::info!("Sending open");
     event_tx.send(CoverEvent::PushButtonOpen).unwrap();
     sleep(Duration::from_secs(1));
     log::info!("Sending close");
     event_tx.send(CoverEvent::PushButtonClose).unwrap();
-    sleep(Duration::from_secs(1));
-    log::info!("Sending close");
-    event_tx.send(CoverEvent::PushButtonClose).unwrap();
-    sleep(Duration::from_secs(1));
+    sleep(Duration::from_secs(3));
     log::info!("Sending open");
     event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-    sleep(Duration::from_secs(1));
 
-    timer_handle.join().unwrap();
     monitor_handle.join().unwrap();
 
     //let (tx, rx) = bounded(4);
