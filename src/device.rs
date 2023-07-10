@@ -1,3 +1,5 @@
+use crate::sysfs::DeviceId;
+
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub enum DeviceType {
     DigitalInput,
@@ -8,7 +10,7 @@ pub enum DeviceType {
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub struct Device {
     // Simple number identifying the device
-    pub id: u8,
+    pub id: DeviceId,
     // Name of the module the device is linked to
     pub module_name: String,
     pub device_type: DeviceType,
@@ -22,7 +24,7 @@ const FILENAME_PATTERN: &str = r"/io_group(1|2|3)/(?P<device_fmt>di|do|ro)_(?P<i
 // Construct a device from a regex captures
 fn device_from_captures(
     captures: &regex::Captures,
-    id: u8,
+    id: DeviceId,
     path_str: &str,
     module_name: &str,
 ) -> Result<crate::device::Device, crate::errors::MausError> {
@@ -91,7 +93,7 @@ fn crawl(
                 crawl(&path, module_name, re, devices)?;
             } else if let Some(path_str) = path.to_str() {
                 // The id we use here is just the current length of the list
-                let id: u8 = devices.len().try_into().unwrap();
+                let id: DeviceId = devices.len().try_into().unwrap();
                 if let Some(captures) = re.captures(path_str) {
                     if let Ok(device) = device_from_captures(&captures, id, path_str, module_name) {
                         devices.push(device);
@@ -150,7 +152,7 @@ fn command_topic_for_device(device: &crate::device::Device) -> String {
 /// Set up mapping device -> state topic
 pub fn device_state_topics(
     devices: &std::vec::Vec<Device>,
-    cache: &mut std::collections::HashMap<u8, String>,
+    cache: &mut std::collections::HashMap<DeviceId, String>,
 ) {
     for device in devices {
         cache.insert(device.id, state_topic_for_device(device));
@@ -160,7 +162,7 @@ pub fn device_state_topics(
 /// Mapping command topic -> device ID
 pub fn device_command_topics(
     devices: &std::vec::Vec<Device>,
-    cache: &mut std::collections::HashMap<String, u8>,
+    cache: &mut std::collections::HashMap<String, DeviceId>,
 ) {
     for device in devices {
         cache.insert(command_topic_for_device(device), device.id);
@@ -170,7 +172,7 @@ pub fn device_command_topics(
 /// Mapping device ID -> path
 pub fn device_paths(
     devices: &std::vec::Vec<Device>,
-    cache: &mut std::collections::HashMap<u8, String>,
+    cache: &mut std::collections::HashMap<DeviceId, String>,
 ) {
     for device in devices {
         cache.insert(device.id, device.path.to_string());

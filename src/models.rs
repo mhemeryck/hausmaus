@@ -1,17 +1,17 @@
+use crate::sysfs::DeviceId;
+use crossbeam::{
+    channel::{tick, Receiver},
+    select,
+};
 use std::{
     thread::{spawn, JoinHandle},
     time::Duration,
 };
 
-use crossbeam::{
-    channel::{tick, Receiver},
-    select,
-};
-
 /// Represents an Normally Open push button
 pub struct PushButton {
     // Link to underlying device
-    pub device_id: u8,
+    pub device_id: DeviceId,
     // Current state of the button; either pushed (true) or not (false)
     pub pushed: bool,
     // Instant to keep track of last update TODO: to be checked how of to push out updates
@@ -21,14 +21,14 @@ pub struct PushButton {
 /// Represents a light control
 struct Light {
     // Link to the underlying device
-    device_id: u8,
+    device_id: DeviceId,
     // LIght can be on or off
     state: bool,
 }
 
 /// Represents a dimmable light control
 struct DimmableLight {
-    device_id: u8,
+    device_id: DeviceId,
     state: bool,
     // simple 256 level brightness control TODO: to be checked if this is enough (corresponds to
     // DALI, so probably OK enough
@@ -64,12 +64,12 @@ pub struct Cover {
     pub state: CoverState,
     pub position: CoverPosition,
 
-    motor_up: u8,
-    motor_down: u8,
+    motor_up: DeviceId,
+    motor_down: DeviceId,
 }
 
 impl Cover {
-    pub fn new(motor_up: u8, motor_down: u8) -> Self {
+    pub fn new(motor_up: DeviceId, motor_down: DeviceId) -> Self {
         Self {
             motor_up,
             motor_down,

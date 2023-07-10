@@ -1,3 +1,5 @@
+use crate::sysfs::DeviceId;
+
 const MQTT_KEEP_ALIVE: u64 = 20;
 const MQTT_CLIENT_CHANNEL_CAP: usize = 10;
 
@@ -21,17 +23,18 @@ pub fn run(mqtt_host: &str, sysfs_path: &str, device_name: &str, mqtt_client_id:
     log::debug!("Number of devices: {}", devices.len());
 
     log::debug!("Build mapping of state topics for devices");
-    let mut state_topic_map: std::collections::HashMap<u8, String> =
+    let mut state_topic_map: std::collections::HashMap<DeviceId, String> =
         std::collections::HashMap::new();
     crate::device::device_state_topics(&devices, &mut state_topic_map);
 
     log::debug!("Build mapping of command topics for devices");
-    let mut command_topic_map: std::collections::HashMap<String, u8> =
+    let mut command_topic_map: std::collections::HashMap<String, DeviceId> =
         std::collections::HashMap::new();
     crate::device::device_command_topics(&devices, &mut command_topic_map);
 
     log::debug!("Build mapping of paths for devices");
-    let mut path_map: std::collections::HashMap<u8, String> = std::collections::HashMap::new();
+    let mut path_map: std::collections::HashMap<DeviceId, String> =
+        std::collections::HashMap::new();
     crate::device::device_paths(&devices, &mut path_map);
 
     // MQTT setup
@@ -67,9 +70,8 @@ pub fn run(mqtt_host: &str, sysfs_path: &str, device_name: &str, mqtt_client_id:
     handles.push(handle);
 
     log::debug!("Start thread to connect path sysfs read -> mqtt publish");
-    let fwt = file_write_tx.clone();
     let handle = std::thread::spawn(move || {
-        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx, fwt);
+        crate::auto::run_sysfs_to_mqtt(file_read_rx, log_write_tx, mqtt_publish_tx);
     });
     handles.push(handle);
 

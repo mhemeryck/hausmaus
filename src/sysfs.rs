@@ -2,4 +2,5 @@
 pub mod read;
 pub mod write;
 
-pub type FileEvent = (u8, bool, std::time::Duration);
+pub type DeviceId = u8;
+pub type FileEvent = (DeviceId, bool, std::time::Duration);

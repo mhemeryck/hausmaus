@@ -1,9 +1,10 @@
 /// subscribe module accepts incoming MQTT messages and forwards it back to the rest
+use crate::sysfs::DeviceId;
 
 /// Subscribe to the topics as available in the topics from the command topic map
 pub fn subscribe_topics(
     mqtt_client: &mut rumqttc::Client,
-    command_topic_map: &std::collections::HashMap<String, u8>,
+    command_topic_map: &std::collections::HashMap<String, DeviceId>,
 ) {
     // COnvert to vector of (topic, QoS)
     let mut topic_qos: std::vec::Vec<rumqttc::SubscribeFilter> = std::vec::Vec::new();
@@ -21,7 +22,7 @@ pub fn subscribe_topics(
 pub fn handle_incoming_messages(
     tx: std::sync::mpsc::Sender<crate::mqtt::MQTTEvent>,
     mqtt_loop: &mut rumqttc::Connection,
-    command_topic_map: &std::collections::HashMap<String, u8>,
+    command_topic_map: &std::collections::HashMap<String, DeviceId>,
 ) {
     // handle message
     for event in mqtt_loop.iter() {

@@ -1,11 +1,11 @@
 /// publish module accepts all incoming events and publishes them to MQTT
-use crate::sysfs::FileEvent;
+use crate::sysfs::{FileEvent, DeviceId};
 
 /// handle_messages receives any file events and sends them out over MQTT
 pub fn publish_messages(
     rx: std::sync::mpsc::Receiver<FileEvent>,
     mut mqtt_client: rumqttc::Client,
-    state_topic_map: &std::collections::HashMap<u8, String>,
+    state_topic_map: &std::collections::HashMap<DeviceId, String>,
 ) {
     for (device_id, state, duration) in rx {
         let message_str: &str = match state {

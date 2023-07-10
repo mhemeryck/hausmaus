@@ -1,4 +1,6 @@
 pub mod publish;
 pub mod subscribe;
 
-pub type MQTTEvent = (u8, bool);
+use crate::sysfs::DeviceId;
+
+pub type MQTTEvent = (DeviceId, bool);
