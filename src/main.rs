@@ -1,11 +1,9 @@
-use std::thread::JoinHandle;
-use std::thread::{sleep, spawn};
-use std::time::{Duration, Instant};
+use std::thread::sleep;
+use std::time::Duration;
 
 use clap::Parser;
 
-use crossbeam::channel::{bounded, tick, Receiver};
-use crossbeam::select;
+use crossbeam::channel::bounded;
 use hausmaus::models::{Cover, CoverEvent, CoverPosition};
 
 #[derive(Parser)]
@@ -70,42 +68,17 @@ fn main2() {
     hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
 }
 
-fn monitor(event_rx: Receiver<CoverEvent>, ticker: Receiver<Instant>) -> JoinHandle<()> {
-    spawn(move || {
-        let mut cover = Cover::new(0, 1);
-        cover.position = CoverPosition::Closed;
-        loop {
-            select! {
-                recv(event_rx) -> msg => {
-                    if let Ok(CoverEvent::PushButtonOpen) | Ok(CoverEvent::PushButtonClose) = msg {
-                        log::info!("Got an event {:?}", msg);
-                        cover.process_event(msg.unwrap());
-                    }
-                },
-                recv(ticker) -> msg => {
-                    log::info!("Got a timer {:?}", msg);
-                    cover.process_event(CoverEvent::TimerTick);
-                },
-            }
-        }
-    })
-}
-
 fn main() {
-    let log_level = "info";
+    let log_level = "debug";
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
     //log::info!("New cover created {:?}", cover);
 
+    let cover = Cover::new(0, 1);
+
     // Event channel
     let (event_tx, event_rx) = bounded(4);
-    // Ticker
-    let ticker = tick(Duration::from_millis(500));
+    let monitor_handle = cover.monitor(event_rx);
 
-    let monitor_handle = monitor(event_rx, ticker);
-
-    log::info!("Sending open");
-    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-    sleep(Duration::from_secs(3));
     log::info!("Sending close");
     event_tx.send(CoverEvent::PushButtonClose).unwrap();
     sleep(Duration::from_secs(10));
@@ -113,19 +86,4 @@ fn main() {
     event_tx.send(CoverEvent::PushButtonOpen).unwrap();
 
     monitor_handle.join().unwrap();
-
-    //let (tx, rx) = bounded(4);
-
-    //cover.start(rx);
-
-    //tx.send(CoverEvent::PushButtonOpen).unwrap();
-
-    //std::thread::sleep(Duration::from_secs(5));
-
-    //tx.send(CoverEvent::PushButtonOpen).unwrap();
-    //tx.send(CoverEvent::PushButtonOpen).unwrap();
-    //tx.send(CoverEvent::PushButtonClose).unwrap();
-    //tx.send(CoverEvent::PushButtonOpen).unwrap();
-    //tx.send(CoverEvent::PushButtonOpen).unwrap();
-    //tx.send(CoverEvent::TimerTick).unwrap();
 }

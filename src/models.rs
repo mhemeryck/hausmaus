@@ -1,6 +1,12 @@
-use std::thread::JoinHandle;
+use std::{
+    thread::{spawn, JoinHandle},
+    time::Duration,
+};
 
-use crossbeam::{channel::Receiver, select};
+use crossbeam::{
+    channel::{tick, Receiver},
+    select,
+};
 
 /// Represents an Normally Open push button
 pub struct PushButton {
@@ -36,7 +42,7 @@ pub enum CoverPosition {
     Position(u8),
 }
 
-const COVER_SLEEP_TIME: f32 = 0.5;
+const COVER_SLEEP_TIME_MILLIS: u64 = 500;
 const COVER_MAX_POSITION: u8 = u8::MAX - 1;
 
 #[derive(Debug, Copy, Clone)]
@@ -96,7 +102,7 @@ impl Cover {
         // - publish event "closed | open | opening | closing" -- depending on current position
     }
 
-    pub fn process_event(&mut self, event: CoverEvent) {
+    fn process_event(&mut self, event: CoverEvent) {
         match (self.state, event) {
             (CoverState::Stopped, CoverEvent::PushButtonOpen) => {
                 log::info!("I was stopped -> opening now!");
@@ -129,21 +135,17 @@ impl Cover {
                 self.open()
             }
             (CoverState::Stopped, CoverEvent::TimerTick) => {
-                log::info!("I was stopped -> time went by -- nothing left to do!");
+                log::debug!("I was stopped -> time went by -- nothing left to do!");
             }
             (CoverState::Opening, CoverEvent::TimerTick) => {
                 log::info!("I was opening -> time went by!");
 
                 self.position = match self.position {
-                    CoverPosition::Closed => {
-                        CoverPosition::Position(1)
-                    }
+                    CoverPosition::Closed => CoverPosition::Position(1),
                     CoverPosition::Position(pos) if pos < COVER_MAX_POSITION => {
                         CoverPosition::Position(pos + 1)
                     }
-                    CoverPosition::Position(_) | CoverPosition::Open => {
-                        CoverPosition::Open
-                    }
+                    CoverPosition::Position(_) | CoverPosition::Open => CoverPosition::Open,
                 };
 
                 log::info!("New position {:?}", self.position);
@@ -158,15 +160,9 @@ impl Cover {
                 log::info!("I was closing -> time went by!");
 
                 self.position = match self.position {
-                    CoverPosition::Open => {
-                        CoverPosition::Position(COVER_MAX_POSITION - 1)
-                    }
-                    CoverPosition::Position(pos) if pos > 0 => {
-                        CoverPosition::Position(pos - 1)
-                    }
-                    CoverPosition::Position(_) | CoverPosition::Closed => {
-                        CoverPosition::Closed
-                    }
+                    CoverPosition::Open => CoverPosition::Position(COVER_MAX_POSITION - 1),
+                    CoverPosition::Position(pos) if pos > 0 => CoverPosition::Position(pos - 1),
+                    CoverPosition::Position(_) | CoverPosition::Closed => CoverPosition::Closed,
                 };
 
                 log::info!("New position {:?}", self.position);
@@ -180,43 +176,23 @@ impl Cover {
         }
     }
 
-    fn start_timer(&self) -> std::thread::JoinHandle<()> {
-        let mut self_clone = self.clone();
-        std::thread::spawn(move || {
-            let tick_duration = std::time::Duration::from_secs_f32(COVER_SLEEP_TIME);
-            loop {
-                let start_time = std::time::Instant::now();
-                log::info!("TICK!");
+    /// Monitor handles events from an incoming channel
+    pub fn monitor(mut self, event_rx: Receiver<CoverEvent>) -> JoinHandle<()> {
+        let ticker = tick(Duration::from_millis(COVER_SLEEP_TIME_MILLIS));
 
-                self_clone.process_event(CoverEvent::TimerTick);
-
-                // Calculate remainder time after processing event
-                let elapsed = start_time.elapsed();
-                let remaining_time = tick_duration
-                    .checked_sub(elapsed)
-                    .unwrap_or_else(|| std::time::Duration::from_secs(0));
-
-                log::info!("{:?}", remaining_time);
-
-                std::thread::sleep(remaining_time);
+        spawn(move || loop {
+            select! {
+                recv(event_rx) -> msg => {
+                    if let Ok(CoverEvent::PushButtonOpen) | Ok(CoverEvent::PushButtonClose) = msg {
+                        log::debug!("Got an event {:?}", msg);
+                        self.process_event(msg.unwrap());
+                    }
+                },
+                recv(ticker) -> msg => {
+                    log::debug!("Got a timer {:?}", msg);
+                    self.process_event(CoverEvent::TimerTick);
+                },
             }
         })
-    }
-
-    fn start_events(&self, events: Receiver<CoverEvent>) -> JoinHandle<()> {
-        let mut self_clone = self.clone();
-        std::thread::spawn(move || {
-            for event in events {
-                self_clone.process_event(event);
-            }
-        })
-    }
-
-    pub fn start(&self, events: Receiver<CoverEvent>) {
-        let timer_thread = self.start_timer();
-        let event_thread = self.start_events(events);
-
-        event_thread.join().unwrap();
-        timer_thread.join().unwrap();
     }
 }
