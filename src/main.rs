@@ -1,10 +1,10 @@
-use std::thread::sleep;
-use std::time::Duration;
+//use std::thread::sleep;
+//use std::time::Duration;
 
 use clap::Parser;
 
-use crossbeam::channel::bounded;
-use hausmaus::models::{Cover, CoverEvent, CoverPosition};
+//use crossbeam::channel::bounded;
+//use hausmaus::models::{Cover, CoverEvent, CoverPosition};
 
 #[derive(Parser)]
 #[command(version, about)]
@@ -40,7 +40,7 @@ fn device_name() -> Option<String> {
     }
 }
 
-fn main2() {
+fn main() {
     let cli = Cli::parse();
 
     let sysfs_path = cli.sysfs.as_deref().unwrap_or("/run/unipi");
@@ -68,22 +68,22 @@ fn main2() {
     hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
 }
 
-fn main() {
-    let log_level = "debug";
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
-    //log::info!("New cover created {:?}", cover);
-
-    let cover = Cover::new(0, 1);
-
-    // Event channel
-    let (event_tx, event_rx) = bounded(4);
-    let monitor_handle = cover.monitor(event_rx);
-
-    log::info!("Sending close");
-    event_tx.send(CoverEvent::PushButtonClose).unwrap();
-    sleep(Duration::from_secs(10));
-    log::info!("Sending open");
-    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-
-    monitor_handle.join().unwrap();
-}
+//fn main() {
+//    let log_level = "debug";
+//    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
+//    //log::info!("New cover created {:?}", cover);
+//
+//    let cover = Cover::new(0, 1);
+//
+//    // Event channel
+//    let (event_tx, event_rx) = bounded(4);
+//    let monitor_handle = cover.monitor(event_rx);
+//
+//    log::info!("Sending close");
+//    event_tx.send(CoverEvent::PushButtonClose).unwrap();
+//    sleep(Duration::from_secs(10));
+//    log::info!("Sending open");
+//    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
+//
+//    monitor_handle.join().unwrap();
+//}
