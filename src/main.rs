@@ -1,83 +1,78 @@
-//use std::thread::sleep;
-//use std::time::Duration;
+use crossbeam::channel::{bounded, Sender};
+use std::fs::File;
+use std::io::prelude::*;
+use std::io::Read;
+use std::io::SeekFrom;
+use std::path::Path;
+use std::thread::{sleep, spawn};
+use std::time;
 
-use clap::Parser;
+const CHANNEL_SIZE: usize = 16;
+const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures/sys/devices/platform/unipi_plc/io_group3/di_3_14/di_value";
+const DURATION: time::Duration = time::Duration::from_millis(250);
 
-//use crossbeam::channel::bounded;
-//use hausmaus::models::{Cover, CoverEvent, CoverPosition};
+type DeviceId = u64;
 
-#[derive(Parser)]
-#[command(version, about)]
-struct Cli {
-    #[arg(help = "MQTT broker host to connect to")]
-    mqtt_host: String,
+// #[derive(Clone, Debug)]
+// enum DeviceType {
+//     DigitalInput,
+//     DigitalOutput,
+//     RelayOutput,
+// }
 
-    // Optional sysfs root path to start scanning for files
-    #[arg(long)]
-    sysfs: Option<String>,
-
-    // Optional host name to pass in, used for root MQTT topic
-    #[arg(long)]
-    device_name: Option<String>,
-
-    // Optional arg to show debug information
-    #[arg(long)]
-    debug: bool,
-
-    // Optional arg to set the MQTT client ID string. Defaults to `hausmaus`
-    #[arg(long)]
-    mqtt_client_id: Option<String>,
+#[derive(Debug)]
+enum State {
+    Off,
+    On,
 }
 
-// device name from hostname
-fn device_name() -> Option<String> {
-    hostname::get().ok()?.into_string().ok()
+#[derive(Debug)]
+struct FileEvent {
+    device_id: DeviceId,
+    state: State,
+}
+
+fn monitor_file(sender: Sender<FileEvent>) {
+    // let mut state = State::On;
+
+    let path = Path::new(PATH);
+    let mut file = File::open(path).expect("Could not read path");
+    let mut buf: [u8; 1] = [0; 1];
+
+    loop {
+        file.read_exact(&mut buf)
+            .expect("Could not read first byte of path");
+        file.seek(SeekFrom::Start(0)).unwrap();
+
+        let state = match buf[0] as char {
+            '0' => State::Off,
+            '1' => State::On,
+            _ => panic!("Can't read this!"),
+        };
+
+        // // toggle state
+        // state = match state {
+        //     State::On => State::Off,
+        //     State::Off => State::On,
+        // };
+
+        let file_event = FileEvent {
+            device_id: 1,
+            state,
+        };
+
+        let _ = sender.send(file_event);
+        sleep(DURATION);
+    }
 }
 
 fn main() {
-    let cli = Cli::parse();
+    let (s, r) = bounded(CHANNEL_SIZE);
 
-    let sysfs_path = cli.sysfs.as_deref().unwrap_or("/run/unipi");
+    let handle = spawn(move || monitor_file(s));
+    while let Ok(e) = r.recv() {
+        println!("{:?}", e);
+    }
 
-    let device_name: String = match cli.device_name.as_deref() {
-        // from input arg
-        Some(device_name) => device_name.to_string(),
-        // from hostname
-        None => device_name().unwrap(),
-    };
-    let device_name = slug::slugify(device_name);
-    let device_name = device_name.as_str();
-
-    let debug = cli.debug;
-
-    let mqtt_client_id = cli.mqtt_client_id.as_deref().unwrap_or("hausmaus");
-
-    // log config
-    let log_level = match debug {
-        true => "debug",
-        false => "info",
-    };
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
-
-    hausmaus::maus::run(&cli.mqtt_host, sysfs_path, device_name, mqtt_client_id);
+    handle.join().expect("Could not run file monitor job");
 }
-
-//fn main() {
-//    let log_level = "debug";
-//    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(log_level)).init();
-//    //log::info!("New cover created {:?}", cover);
-//
-//    let cover = Cover::new(0, 1);
-//
-//    // Event channel
-//    let (event_tx, event_rx) = bounded(4);
-//    let monitor_handle = cover.monitor(event_rx);
-//
-//    log::info!("Sending close");
-//    event_tx.send(CoverEvent::PushButtonClose).unwrap();
-//    sleep(Duration::from_secs(10));
-//    log::info!("Sending open");
-//    event_tx.send(CoverEvent::PushButtonOpen).unwrap();
-//
-//    monitor_handle.join().unwrap();
-//}
