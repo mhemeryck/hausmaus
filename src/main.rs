@@ -31,13 +31,7 @@ struct Cli {
 
 // device name from hostname
 fn device_name() -> Option<String> {
-    match hostname::get() {
-        Ok(os_string) => match os_string.into_string() {
-            Ok(str_ref) => Some(str_ref),
-            Err(_) => None,
-        },
-        Err(_) => None,
-    }
+    hostname::get().ok()?.into_string().ok()
 }
 
 fn main() {
