@@ -32,36 +32,39 @@ struct FileEvent {
     state: State,
 }
 
-fn monitor_file(sender: Sender<FileEvent>) {
-    // let mut state = State::On;
+#[derive(Debug)]
+enum Error {
+    FileMonitorErr(Option<char>),
+}
 
-    let path = Path::new(PATH);
-    let mut file = File::open(path).expect("Could not read path");
+fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
+    let path = Path::new(path);
+    let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr(None))?;
     let mut buf: [u8; 1] = [0; 1];
 
     loop {
         file.read_exact(&mut buf)
-            .expect("Could not read first byte of path");
-        file.seek(SeekFrom::Start(0)).unwrap();
+            .map_err(|_e| Error::FileMonitorErr(None))?;
+        file.seek(SeekFrom::Start(0))
+            .map_err(|_e| Error::FileMonitorErr(None))?;
 
-        let state = match buf[0] as char {
-            '0' => State::Off,
-            '1' => State::On,
-            _ => panic!("Can't read this!"),
+        let state: State;
+        match buf[0] as char {
+            '0' => {
+                state = State::Off;
+            }
+            '1' => {
+                state = State::On;
+            }
+            c => {
+                return Err(Error::FileMonitorErr(Some(c)));
+            }
         };
 
-        // // toggle state
-        // state = match state {
-        //     State::On => State::Off,
-        //     State::Off => State::On,
-        // };
-
-        let file_event = FileEvent {
+        let _ = sender.send(FileEvent {
             device_id: 1,
             state,
-        };
-
-        let _ = sender.send(file_event);
+        });
         sleep(DURATION);
     }
 }
@@ -69,10 +72,14 @@ fn monitor_file(sender: Sender<FileEvent>) {
 fn main() {
     let (s, r) = bounded(CHANNEL_SIZE);
 
-    let handle = spawn(move || monitor_file(s));
+    let handle = spawn(move || monitor_file(PATH, s));
     while let Ok(e) = r.recv() {
-        println!("{:?}", e);
+        println!("{:?} - {:?}", e.device_id, e.state);
     }
 
-    handle.join().expect("Could not run file monitor job");
+    match handle.join() {
+        Ok(Err(e)) => println!("Error in handling sender thread: {:?}", e),
+        Err(e) => println!("Found err {:?}", e),
+        _ => println!("Finished"),
+    };
 }
