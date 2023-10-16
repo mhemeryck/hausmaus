@@ -34,37 +34,33 @@ struct FileEvent {
 
 #[derive(Debug)]
 enum Error {
-    FileMonitorErr(Option<char>),
+    FileMonitorErr,
 }
 
 fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
     let path = Path::new(path);
-    let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr(None))?;
+    let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr)?;
     let mut buf: [u8; 1] = [0; 1];
 
     loop {
         file.read_exact(&mut buf)
-            .map_err(|_e| Error::FileMonitorErr(None))?;
+            .map_err(|_e| Error::FileMonitorErr)?;
         file.seek(SeekFrom::Start(0))
-            .map_err(|_e| Error::FileMonitorErr(None))?;
+            .map_err(|_e| Error::FileMonitorErr)?;
 
-        let state: State;
-        match buf[0] as char {
-            '0' => {
-                state = State::Off;
-            }
-            '1' => {
-                state = State::On;
-            }
-            c => {
-                return Err(Error::FileMonitorErr(Some(c)));
-            }
+        let state = match buf[0] as char {
+            '0' => Some(State::Off),
+            '1' => Some(State::On),
+            _ => None,
         };
 
-        let _ = sender.send(FileEvent {
-            device_id: 1,
-            state,
-        });
+        let state = state.ok_or(Error::FileMonitorErr)?;
+        sender
+            .send(FileEvent {
+                device_id: 1,
+                state,
+            })
+            .map_err(|_e| Error::FileMonitorErr)?;
         sleep(DURATION);
     }
 }
