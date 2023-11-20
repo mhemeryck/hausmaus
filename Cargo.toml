@@ -15,6 +15,7 @@ crossbeam = "0.8.2"
 futures = "0.3.28"
 serde_yaml = "0.9.25"
 serde = { version = "1.0.189", features = ["derive"] }
+crossbeam-channel = "0.5.8"
 
 [dev-dependencies]
 tempdir = "0.3.7"

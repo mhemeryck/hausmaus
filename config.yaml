@@ -1,0 +1,12 @@
+push_buttons:
+  - name: living_room
+    device: tesla/di_3_14
+
+lights:
+  - name: living_room
+    device: tesla/do_3_14
+
+rules:
+  - name: toggle living room
+    trigger: push_button.living_room
+    action: light.living_room.toggle

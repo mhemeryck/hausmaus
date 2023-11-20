@@ -1,14 +1,16 @@
+use crossbeam::channel::Receiver;
 use crossbeam::channel::{bounded, Sender};
 // use serde::{Deserialize, Serialize};
 // use serde_yaml;
 // use std::collections::HashMap;
+use crossbeam_channel::{select, tick};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
 use std::io::SeekFrom;
 use std::path::Path;
-use std::thread::{sleep, spawn};
-use std::time;
+use std::thread::{sleep, spawn, JoinHandle};
+use std::time::{self, Duration};
 
 const CHANNEL_SIZE: usize = 4;
 const PATH: &str = "/home/mhemeryck/Projects/hausmaus/fixtures/sys/devices/platform/unipi_plc/io_group3/di_3_14/di_value"; // TODO: as config
@@ -71,6 +73,95 @@ enum Error {
 //     action: String,
 // }
 
+#[derive(Debug)]
+enum Event {
+    Toggle,
+}
+
+struct PushButton {
+    filename: String,
+}
+
+impl PushButton {
+    pub fn new(filename: &str) -> Self {
+        Self {
+            filename: filename.to_string(),
+        }
+    }
+
+    pub fn process(
+        self,
+        event_rx: Receiver<Event>,
+        event_tx: Sender<FileEvent>,
+    ) -> Result<JoinHandle<()>, Error> {
+        let ticker = tick(Duration::from_millis(250));
+
+        // file business
+        let mut readfile = File::open(&self.filename).map_err(|_e| Error::FileMonitorErr)?;
+        let mut readbuf: [u8; 1] = [0; 1];
+
+        let mut prev_state: Option<State> = None;
+
+        let handle = spawn(move || loop {
+            select! {
+            recv(event_rx) -> _msg => {
+                let mut writefile = File::open(PATH).unwrap();
+                let mut writebuf: [u8; 1] = [0; 1];
+                // file.read_exact(&mut buf).map_err(|_| Error::FileWriteErr)?;
+                writefile.read_exact(&mut writebuf).unwrap();
+
+                let state = match writebuf[0] as char {
+                    '0' => Some(State::Off),
+                    '1' => Some(State::On),
+                    _ => None,
+                };
+
+                let state = state.unwrap();
+
+                let mut outfile = File::create(&self.filename).unwrap();
+                match state {
+                    State::On => {
+                        println!("Convert file from on to off");
+                        outfile.write(b"0").unwrap();
+                    }
+                    State::Off => {
+                        println!("Convert file from off to on");
+                        outfile.write(b"1").unwrap();
+                    }
+                }
+            },
+
+            recv(ticker) -> _msg => {
+                    readfile.read_exact(&mut readbuf).unwrap();
+                    readfile.seek(SeekFrom::Start(0)).unwrap();
+
+                    let state = match readbuf[0] as char {
+                        '0' => Some(State::Off),
+                        '1' => Some(State::On),
+                        _ => None,
+                    };
+
+                    let state = state.unwrap();
+                    match (prev_state, state) {
+                        (Some(State::On), State::Off) | (Some(State::Off), State::On) => {
+                            println!("File update during tick!");
+                            event_tx
+                                .send(FileEvent {
+                                    device_id: DEVICE_ID,
+                                    state,
+                                }).unwrap();
+                        }
+                        _ => {}
+                    }
+                    prev_state = Some(state);
+
+                },
+            }
+        });
+        Ok(handle)
+    }
+}
+
 fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
     let path = Path::new(path);
     let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr)?;
@@ -79,31 +170,6 @@ fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
     let mut prev_state: Option<State> = None;
 
     loop {
-        file.read_exact(&mut buf)
-            .map_err(|_e| Error::FileMonitorErr)?;
-        file.seek(SeekFrom::Start(0))
-            .map_err(|_e| Error::FileMonitorErr)?;
-
-        let state = match buf[0] as char {
-            '0' => Some(State::Off),
-            '1' => Some(State::On),
-            _ => None,
-        };
-
-        let state = state.ok_or(Error::FileMonitorErr)?;
-        match (prev_state, state) {
-            (Some(State::On), State::Off) | (Some(State::Off), State::On) => {
-                sender
-                    .send(FileEvent {
-                        device_id: DEVICE_ID,
-                        state,
-                    })
-                    .map_err(|_e| Error::FileMonitorErr)?;
-            }
-            _ => {}
-        }
-        prev_state = Some(state);
-
         sleep(DURATION);
     }
 }
@@ -147,41 +213,60 @@ fn main() {
     // let mut config_map = HashMap::new();
     // config_map.insert(DEVICE_ID, "di_3_14");
 
-    let (s, r) = bounded(CHANNEL_SIZE);
-    // let (s1, r1) = bounded(CHANNEL_SIZE);
-
     // File monitor thread
     let mut handles = Vec::new();
-    let handle = spawn(move || monitor_file(PATH, s));
-    handles.push(handle);
 
-    // Main automation thread
+    let push_button = PushButton::new(PATH);
+
+    let (tx, rx) = bounded(CHANNEL_SIZE);
+    let (s, r) = bounded(CHANNEL_SIZE);
+    let handle = push_button.process(r, tx);
+    handles.push(handle.unwrap());
+
     let handle = spawn(move || {
-        while let Ok(e) = r.recv() {
-            println!("{:?}", e);
+        while let Ok(e) = rx.recv() {
             if e.device_id == DEVICE_ID {
                 println!("toggle path: {:?}", e);
-                toggle_light(OUTPUT_PATH).unwrap();
+                // toggle_light(OUTPUT_PATH).unwrap();
             }
         }
-        Ok(())
     });
     handles.push(handle);
-
-    // while let Ok(e) = r.recv() {
-    //     println!("{:?} - {:?}", e.device_id, e.state);
-    //     // TODO: rewrap before sending
-    //     s1.send(e).unwrap();
-    // }
-
-    for handle in handles {
-        handle.join().unwrap().unwrap();
+    for _ in 0..10 {
+        s.send(Event::Toggle).unwrap();
+        sleep(Duration::from_secs(1));
     }
 
-    // handle2.join().unwrap();
-    // match handle.join() {
-    //     Ok(Err(e)) => println!("Error in handling sender thread: {:?}", e),
-    //     Err(e) => println!("Found err {:?}", e),
-    //     _ => println!("Finished"),
-    // };
+    for handle in handles {
+        handle.join().unwrap();
+    }
+
+    // let (s, r) = bounded(CHANNEL_SIZE);
+    // // let (s1, r1) = bounded(CHANNEL_SIZE);
+
+    // // Main automation thread
+    // let handle = spawn(move || {
+    //     while let Ok(e) = r.recv() {
+    //         println!("{:?}", e);
+    //         if e.device_id == DEVICE_ID {
+    //             println!("toggle path: {:?}", e);
+    //             toggle_light(OUTPUT_PATH).unwrap();
+    //         }
+    //     }
+    //     Ok(())
+    // });
+    // handles.push(handle);
+
+    // // while let Ok(e) = r.recv() {
+    // //     println!("{:?} - {:?}", e.device_id, e.state);
+    // //     // TODO: rewrap before sending
+    // //     s1.send(e).unwrap();
+    // // }
+
+    // // handle2.join().unwrap();
+    // // match handle.join() {
+    // //     Ok(Err(e)) => println!("Error in handling sender thread: {:?}", e),
+    // //     Err(e) => println!("Found err {:?}", e),
+    // //     _ => println!("Finished"),
+    // // };
 }
