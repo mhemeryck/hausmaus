@@ -162,111 +162,197 @@ impl PushButton {
     }
 }
 
-fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
-    let path = Path::new(path);
-    let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr)?;
-    let mut buf: [u8; 1] = [0; 1];
+#[derive(Debug)]
+enum DeviceEvent {
+    TurnOn,
+    TurnOff,
+    // On(u64),
+    // Off(u64),
+}
 
-    let mut prev_state: Option<State> = None;
+enum DeviceCommand {
+    On,
+    Off,
+    Toggle,
+}
 
-    loop {
-        sleep(DURATION);
+trait Device {
+    fn new(path: &'static str) -> Self;
+
+    fn monitor(
+        self,
+        sender: Sender<DeviceEvent>,
+        receiver: Receiver<DeviceCommand>,
+    ) -> JoinHandle<()>;
+}
+
+struct DigitalInput {
+    path: &'static str,
+}
+
+impl Device for DigitalInput {
+    fn new(path: &'static str) -> DigitalInput {
+        DigitalInput { path }
+    }
+
+    fn monitor(
+        self,
+        sender: Sender<DeviceEvent>,
+        receiver: Receiver<DeviceCommand>,
+    ) -> JoinHandle<()> {
+        let ticker = tick(DURATION);
+
+        spawn(move || loop {
+            select! {
+                recv(receiver) -> msg => {
+                    match msg {
+                        Ok(DeviceCommand::On) => println!("Turning on ..."),
+                        Ok(DeviceCommand::Off) => println!("Turning off ..."),
+                        Ok(DeviceCommand::Toggle) => println!("Toggling ..."),
+                        Err(_) => todo!(),
+                    }
+                },
+                recv(ticker) -> _msg => {
+                    println!("Time is ticking away ...");
+                    sender.send(DeviceEvent::TurnOn).unwrap();
+                }
+            }
+        })
     }
 }
 
-fn toggle_light(path: &str) -> Result<(), Error> {
-    let mut file = File::open(path).map_err(|_| Error::FileWriteErr)?;
-    let mut buf: [u8; 1] = [0; 1];
+// fn monitor_file(path: &str, sender: Sender<FileEvent>) -> Result<(), Error> {
+//     let path = Path::new(path);
+//     let mut file = File::open(path).map_err(|_e| Error::FileMonitorErr)?;
+//     let mut buf: [u8; 1] = [0; 1];
 
-    file.read_exact(&mut buf).map_err(|_| Error::FileWriteErr)?;
+//     let mut prev_state: Option<State> = None;
 
-    let state = match buf[0] as char {
-        '0' => Some(State::Off),
-        '1' => Some(State::On),
-        _ => None,
-    };
+//     loop {
+//         sleep(DURATION);
+//     }
+// }
 
-    let state = state.ok_or(Error::FileWriteErr)?;
+// fn toggle_light(path: &str) -> Result<(), Error> {
+//     let mut file = File::open(path).map_err(|_| Error::FileWriteErr)?;
+//     let mut buf: [u8; 1] = [0; 1];
 
-    let mut file = File::create(path).map_err(|_| Error::FileWriteErr)?;
-    match state {
-        State::On => {
-            println!("Convert file from on to off");
-            file.write(b"0").map_err(|_| Error::FileWriteErr)?;
-        }
-        State::Off => {
-            println!("Convert file from off to on");
-            file.write(b"1").map_err(|_| Error::FileWriteErr)?;
-        }
-    }
+//     file.read_exact(&mut buf).map_err(|_| Error::FileWriteErr)?;
 
-    Ok(())
-}
+//     let state = match buf[0] as char {
+//         '0' => Some(State::Off),
+//         '1' => Some(State::On),
+//         _ => None,
+//     };
+
+//     let state = state.ok_or(Error::FileWriteErr)?;
+
+//     let mut file = File::create(path).map_err(|_| Error::FileWriteErr)?;
+//     match state {
+//         State::On => {
+//             println!("Convert file from on to off");
+//             file.write(b"0").map_err(|_| Error::FileWriteErr)?;
+//         }
+//         State::Off => {
+//             println!("Convert file from off to on");
+//             file.write(b"1").map_err(|_| Error::FileWriteErr)?;
+//         }
+//     }
+
+//     Ok(())
+// }
 
 fn main() {
-    // // YAML config
-    // let config = read_to_string(CONFIG_FILE).unwrap();
-    // let deserialized_config: Config = serde_yaml::from_str(&config).unwrap();
-    // println!("Found config {:?}", deserialized_config);
+    let (s_command, r_command) = bounded(CHANNEL_SIZE);
+    let (s_event, r_event) = bounded(CHANNEL_SIZE);
 
-    // // TODO: crawl for devices
-    // let mut config_map = HashMap::new();
-    // config_map.insert(DEVICE_ID, "di_3_14");
-
-    // File monitor thread
     let mut handles = Vec::new();
+    let digital_input = DigitalInput::new(PATH);
 
-    let push_button = PushButton::new(PATH);
-
-    let (tx, rx) = bounded(CHANNEL_SIZE);
-    let (s, r) = bounded(CHANNEL_SIZE);
-    let handle = push_button.process(r, tx);
-    handles.push(handle.unwrap());
+    let handle = digital_input.monitor(s_event, r_command);
+    handles.push(handle);
 
     let handle = spawn(move || {
-        while let Ok(e) = rx.recv() {
-            if e.device_id == DEVICE_ID {
-                println!("toggle path: {:?}", e);
-                // toggle_light(OUTPUT_PATH).unwrap();
-            }
+        while let Ok(e) = r_event.recv() {
+            println!("received event from digital input: {:?}", e);
         }
     });
     handles.push(handle);
-    for _ in 0..10 {
-        s.send(Event::Toggle).unwrap();
-        sleep(Duration::from_secs(1));
+
+    for _ in 0..=10 {
+        s_command.send(DeviceCommand::On).unwrap();
+        sleep(DURATION);
     }
 
     for handle in handles {
         handle.join().unwrap();
     }
-
-    // let (s, r) = bounded(CHANNEL_SIZE);
-    // // let (s1, r1) = bounded(CHANNEL_SIZE);
-
-    // // Main automation thread
-    // let handle = spawn(move || {
-    //     while let Ok(e) = r.recv() {
-    //         println!("{:?}", e);
-    //         if e.device_id == DEVICE_ID {
-    //             println!("toggle path: {:?}", e);
-    //             toggle_light(OUTPUT_PATH).unwrap();
-    //         }
-    //     }
-    //     Ok(())
-    // });
-    // handles.push(handle);
-
-    // // while let Ok(e) = r.recv() {
-    // //     println!("{:?} - {:?}", e.device_id, e.state);
-    // //     // TODO: rewrap before sending
-    // //     s1.send(e).unwrap();
-    // // }
-
-    // // handle2.join().unwrap();
-    // // match handle.join() {
-    // //     Ok(Err(e)) => println!("Error in handling sender thread: {:?}", e),
-    // //     Err(e) => println!("Found err {:?}", e),
-    // //     _ => println!("Finished"),
-    // // };
 }
+
+// fn main() {
+//     // // YAML config
+//     // let config = read_to_string(CONFIG_FILE).unwrap();
+//     // let deserialized_config: Config = serde_yaml::from_str(&config).unwrap();
+//     // println!("Found config {:?}", deserialized_config);
+
+//     // // TODO: crawl for devices
+//     // let mut config_map = HashMap::new();
+//     // config_map.insert(DEVICE_ID, "di_3_14");
+
+//     // File monitor thread
+//     let mut handles = Vec::new();
+
+//     let push_button = PushButton::new(PATH);
+
+//     let (tx, rx) = bounded(CHANNEL_SIZE);
+//     let (s, r) = bounded(CHANNEL_SIZE);
+//     let handle = push_button.process(r, tx);
+//     handles.push(handle.unwrap());
+
+//     let handle = spawn(move || {
+//         while let Ok(e) = rx.recv() {
+//             if e.device_id == DEVICE_ID {
+//                 println!("toggle path: {:?}", e);
+//                 // toggle_light(OUTPUT_PATH).unwrap();
+//             }
+//         }
+//     });
+//     handles.push(handle);
+//     for _ in 0..10 {
+//         s.send(Event::Toggle).unwrap();
+//         sleep(Duration::from_secs(1));
+//     }
+
+//     for handle in handles {
+//         handle.join().unwrap();
+//     }
+
+//     // let (s, r) = bounded(CHANNEL_SIZE);
+//     // // let (s1, r1) = bounded(CHANNEL_SIZE);
+
+//     // // Main automation thread
+//     // let handle = spawn(move || {
+//     //     while let Ok(e) = r.recv() {
+//     //         println!("{:?}", e);
+//     //         if e.device_id == DEVICE_ID {
+//     //             println!("toggle path: {:?}", e);
+//     //             toggle_light(OUTPUT_PATH).unwrap();
+//     //         }
+//     //     }
+//     //     Ok(())
+//     // });
+//     // handles.push(handle);
+
+//     // // while let Ok(e) = r.recv() {
+//     // //     println!("{:?} - {:?}", e.device_id, e.state);
+//     // //     // TODO: rewrap before sending
+//     // //     s1.send(e).unwrap();
+//     // // }
+
+//     // // handle2.join().unwrap();
+//     // // match handle.join() {
+//     // //     Ok(Err(e)) => println!("Error in handling sender thread: {:?}", e),
+//     // //     Err(e) => println!("Found err {:?}", e),
+//     // //     _ => println!("Finished"),
+//     // // };
+// }
