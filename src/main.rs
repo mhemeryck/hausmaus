@@ -4,11 +4,12 @@ use crossbeam::channel::{bounded, Sender};
 // use serde_yaml;
 // use std::collections::HashMap;
 use crossbeam_channel::{select, tick};
+use futures::stream::FilterMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::Read;
 use std::io::SeekFrom;
-use std::path::Path;
+// use std::path::Path;
 use std::thread::{sleep, spawn, JoinHandle};
 use std::time::{self, Duration};
 
@@ -29,7 +30,7 @@ type DeviceId = u64;
 //     RelayOutput,
 // }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 enum State {
     Off,
     On,
@@ -43,8 +44,9 @@ struct FileEvent {
 
 #[derive(Debug)]
 enum Error {
-    FileMonitorErr,
+    FileReadErr,
     FileWriteErr,
+    FileUnexpectedContentErr,
 }
 
 // #[derive(Debug, Deserialize)]
@@ -97,7 +99,7 @@ impl PushButton {
         let ticker = tick(Duration::from_millis(250));
 
         // file business
-        let mut readfile = File::open(&self.filename).map_err(|_e| Error::FileMonitorErr)?;
+        let mut readfile = File::open(&self.filename).map_err(|_e| Error::FileReadErr)?;
         let mut readbuf: [u8; 1] = [0; 1];
 
         let mut prev_state: Option<State> = None;
@@ -164,8 +166,8 @@ impl PushButton {
 
 #[derive(Debug)]
 enum DeviceEvent {
-    TurnOn,
-    TurnOff,
+    TurnedOn,
+    TurnedOff,
     // On(u64),
     // Off(u64),
 }
@@ -190,9 +192,14 @@ struct DigitalInput {
     path: &'static str,
 }
 
-impl Device for DigitalInput {
-    fn new(path: &'static str) -> DigitalInput {
-        DigitalInput { path }
+struct DigitalOutput {
+    path: &'static str,
+    state: Option<State>,
+}
+
+impl Device for DigitalOutput {
+    fn new(path: &'static str) -> DigitalOutput {
+        DigitalOutput { path, state: None }
     }
 
     fn monitor(
@@ -214,10 +221,124 @@ impl Device for DigitalInput {
                 },
                 recv(ticker) -> _msg => {
                     println!("Time is ticking away ...");
-                    sender.send(DeviceEvent::TurnOn).unwrap();
+                    sender.send(DeviceEvent::TurnedOn).unwrap();
                 }
             }
         })
+    }
+}
+
+// File state mapper allows wraps the sysfs operations
+struct FileStateMapper {
+    path: &'static str,
+    state: Option<State>,
+}
+
+impl FileStateMapper {
+    fn new(path: &'static str) -> Self {
+        FileStateMapper { path, state: None }
+    }
+
+    fn monitor(
+        mut self,
+        sender: Sender<DeviceEvent>,
+        receiver: Receiver<DeviceCommand>,
+    ) -> JoinHandle<()> {
+        let ticker = tick(DURATION);
+
+        spawn(move || loop {
+            select! {
+                recv(receiver) -> msg => match msg {
+                    Ok(cmd) =>  self.handle(cmd).unwrap(),
+                    Err(_e) => (),
+                },
+                recv(ticker) -> _msg => {
+                    self.read().unwrap();
+                    match self.state {
+                        Some(State::On) => sender.send(DeviceEvent::TurnedOn).unwrap(),
+                        Some(State::Off) => sender.send(DeviceEvent::TurnedOff).unwrap(),
+                        _ => ()
+
+                    }
+                }
+            }
+        })
+    }
+
+    fn handle(&mut self, cmd: DeviceCommand) -> Result<(), Error> {
+        match cmd {
+            DeviceCommand::On => self.write(State::On),
+            DeviceCommand::Off => self.write(State::Off),
+            DeviceCommand::Toggle => {
+                println!("{:?}", self.state);
+                match self.state {
+                    Some(State::Off) => self.write(State::On),
+                    Some(State::On) => self.write(State::Off),
+                    None => {
+                        self.read()?;
+                        match self.state {
+                            None => Err(Error::FileReadErr),
+                            _ => self.handle(cmd),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Read the current state
+    fn read(&mut self) -> Result<(), Error> {
+        let mut file = File::open(self.path).map_err(|_e| Error::FileReadErr)?;
+        let mut buf: [u8; 1] = [0; 1];
+
+        // Read current value
+        file.read_exact(&mut buf).map_err(|_| Error::FileReadErr)?;
+
+        self.state = match buf[0] as char {
+            '0' => Some(State::Off),
+            '1' => Some(State::On),
+            _ => None,
+        };
+
+        // Err in case we couldn't read the value
+        self.state.ok_or_else(|| Error::FileUnexpectedContentErr)?;
+
+        Ok(())
+    }
+
+    fn write(&mut self, state: State) -> Result<(), Error> {
+        match (self.state, state) {
+            (None, _) => {
+                // No previously known state, so read it
+                self.read()?;
+                // Read it again now
+                match self.state {
+                    // Still nothing, break up
+                    None => Err(Error::FileReadErr),
+                    // Read again
+                    _ => self.write(state),
+                }
+            }
+
+            // Flip, where required
+            (Some(prev), next) if prev != next => self.write_new_state(next),
+            // Already the correct state, so nothing to do
+            (Some(_), _) => Ok(()),
+        }
+    }
+
+    fn write_new_state(&mut self, state: State) -> Result<(), Error> {
+        let mut file = File::create(self.path).map_err(|_| Error::FileWriteErr)?;
+        match state {
+            State::On => {
+                file.write(b"1").map_err(|_| Error::FileWriteErr)?;
+                Ok(())
+            }
+            State::Off => {
+                file.write(b"0").map_err(|_| Error::FileWriteErr)?;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -267,22 +388,25 @@ fn main() {
     let (s_event, r_event) = bounded(CHANNEL_SIZE);
 
     let mut handles = Vec::new();
-    let digital_input = DigitalInput::new(PATH);
+    let fm = FileStateMapper::new(OUTPUT_PATH);
 
-    let handle = digital_input.monitor(s_event, r_command);
+    let handle = fm.monitor(s_event, r_command);
     handles.push(handle);
 
     let handle = spawn(move || {
         while let Ok(e) = r_event.recv() {
-            println!("received event from digital input: {:?}", e);
+            println!("received event from file state mapper: {:?}", e);
         }
     });
     handles.push(handle);
 
-    for _ in 0..=10 {
-        s_command.send(DeviceCommand::On).unwrap();
-        sleep(DURATION);
-    }
+    let handle = spawn(move || {
+        for _ in 0..=10 {
+            s_command.send(DeviceCommand::Toggle).unwrap();
+            sleep(time::Duration::from_secs(1));
+        }
+    });
+    handles.push(handle);
 
     for handle in handles {
         handle.join().unwrap();
